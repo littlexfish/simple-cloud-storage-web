@@ -1,19 +1,21 @@
-import React, {memo, useMemo} from "react";
+import React, {memo} from "react";
 import {
-    Breadcrumb, BreadcrumbItem, Button,
-    HelperText,
-    HelperTextItem, Modal, ModalBody, ModalFooter, ModalHeader, SimpleList, SimpleListItem,
+    Alert, AlertActionLink,
+    Breadcrumb, BreadcrumbItem, Button, MenuToggle,
+    Modal, ModalBody, ModalFooter, ModalHeader, Select, SelectList, SelectOption, SimpleList, SimpleListItem,
     Spinner,
-    Split,
-    SplitItem,
-    Stack,
-    StackItem,
+    Split, SplitItem,
+    Stack, StackItem,
     TreeView
 } from "@patternfly/react-core";
 import FolderIcon from "@patternfly/react-icons/dist/esm/icons/folder-icon";
 import FolderOpenIcon from "@patternfly/react-icons/dist/esm/icons/folder-open-icon";
 import FileIcon from "@patternfly/react-icons/dist/esm/icons/file-icon";
-import {getUrl} from "./file.service.js";
+import {bytesToHumanReadable, getUrl} from "./file.service.js";
+import ImageView from "./file-view/ImageView.jsx";
+import TextView from "./file-view/TextView.jsx";
+import ZipView from "./file-view/ZipView.jsx";
+import PdfView from "./file-view/PdfView.jsx";
 
 class FileView extends React.Component {
 
@@ -21,16 +23,11 @@ class FileView extends React.Component {
         super(props);
         this.state = {
             selectedDirectory: '',
-            openedFile: '',
         }
     }
 
     onDirectorySelect(directory) {
         this.setState({selectedDirectory: directory});
-    }
-
-    onFileOpen(file) {
-        this.setState({openedFile: file});
     }
 
     render() {
@@ -44,11 +41,7 @@ class FileView extends React.Component {
     }
 }
 
-const DataLoadingErrorElement = memo((props) => <HelperText {...props}>
-    <HelperTextItem variant="error" hasIcon>
-        Error on loading data
-    </HelperTextItem>
-</HelperText>)
+const DataLoadingErrorElement = memo((props) => <Alert {...props} style={{textWrap: 'nowrap'}} variant="danger" title="Error on loading data"></Alert>)
 const Loading = memo((props) => <span><Spinner isInline={true} {...props} /> Loading...</span>)
 
 class FileTree extends React.Component {
@@ -251,18 +244,13 @@ class DirectoryView extends React.Component {
 
     breadcrumbItem(name, path, isActive) {
         if (!isActive) {
-            return <BreadcrumbItem key={path}>{name}</BreadcrumbItem>
+            return <BreadcrumbItem key={path}>
+                <Button variant="plain" isDisabled={true}>{name}</Button>
+            </BreadcrumbItem>
         }
         return <BreadcrumbItem key={path}>
-            <Button variant="link" isInline={true} onClick={this.onNewPath.bind(this, path)}>{name}</Button>
+            <Button variant="link" onClick={this.onNewPath.bind(this, path)}>{name}</Button>
         </BreadcrumbItem>
-    }
-
-    bytesToHumanReadable(bytes) {
-        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-        if (bytes === 0) return '0 B';
-        const i = Math.floor(Math.log(bytes) / Math.log(1024));
-        return (bytes / Math.pow(1024, i)).toFixed(2) + ' ' + sizes[i];
     }
 
     buildSimpleListItem(item) {
@@ -276,7 +264,7 @@ class DirectoryView extends React.Component {
                     {item.name}
                 </SplitItem>
                 <SplitItem>
-                    {item.isDirectory ? '' : this.bytesToHumanReadable(item.size)}
+                    {item.isDirectory ? '' : bytesToHumanReadable(item.size)}
                 </SplitItem>
             </Split>
         </SimpleListItem>
@@ -298,13 +286,29 @@ class DirectoryView extends React.Component {
         return filePath.slice(dir.length + 1);
     }
 
+    download() {
+        fetch(getUrl('/api/file/download?path=' + this.state.openedFile))
+            .then(res => res.blob())
+            .then(blob => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                // a.target = '_blank';
+                a.download = this.getOpenedFileName();
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                a.remove();
+            });
+    }
+
     render() {
-        const pathList = this.breakPath(this.props.selectedDirectory || '');
+        const pathList = this.props.selectedDirectory ? this.breakPath(this.props.selectedDirectory) : [];
         return (
             <Stack style={{height: '100%'}}>
                 <StackItem>
                     <Breadcrumb style={{padding: '8px'}}>
-                        {this.breadcrumbItem('/', '', pathList.length !== 0 && pathList[0] !== '')}
+                        {this.breadcrumbItem('/', '', pathList.length !== 0)}
                         {pathList.map((item, index) => {
                             return this.breadcrumbItem(item, pathList.slice(0, index + 1).join('/'), index !== pathList.length - 1);
                         })}
@@ -319,7 +323,8 @@ class DirectoryView extends React.Component {
                                     ''
                     }
                 </StackItem>
-                <Modal disableFocusTrap
+                <Modal variant="medium"
+                       disableFocusTrap
                        isOpen={this.state.openedFile !== null}
                        onEscapePress={this.onOpenFile.bind(this, null)}
                        onClose={this.onOpenFile.bind(this, null)}>
@@ -327,7 +332,9 @@ class DirectoryView extends React.Component {
                     <ModalBody>
                         <FileContentView path={this.state.openedFile} />
                     </ModalBody>
-                    <ModalFooter></ModalFooter>
+                    <ModalFooter style={{justifyContent: 'end'}}>
+                        <Button variant="link" onClick={this.download.bind(this)}>Download</Button>
+                    </ModalFooter>
                 </Modal>
             </Stack>
         );
@@ -338,16 +345,98 @@ class FileContentView extends React.Component {
 
     constructor(props) {
         super(props);
+        this.state = {
+            type: null,
+            viewable: true,
+            forceViewType: 'text',
+            forceViewDropdownOpen: false,
+        }
+        this.allViewType = [
+            {
+                value: 'text',
+                label: 'Text'
+            },
+            {
+                value: 'image',
+                label: 'Image'
+            },
+            {
+                value: 'zip',
+                label: 'Zip'
+            },
+            {
+                value: 'pdf',
+                label: 'PDF'
+            }
+        ];
+    }
+
+    updateContent() {
+        fetch(getUrl('/api/file/type?path=' + this.props.path))
+            .then(res => res.json())
+            .catch(error => {
+                this.setState({type: 'error', viewable: true});
+                console.error('Error:', error);
+            })
+            .then(data => {
+                this.setState({type: data.type.toLowerCase(), viewable: data.viewable});
+            });
+    }
+
+    componentDidMount() {
+        this.updateContent();
+    }
+
+    componentDidUpdate(prevProps) {
+        if (prevProps.path !== this.props.path) {
+            this.updateContent();
+        }
+    }
+
+    getComponent() {
+        if (!this.state.viewable) {
+            return <Alert variant="warning" title="The preview for this file is not available.">
+                <Button variant="link" isInline onClick={() => this.setState({viewable: true, type: this.state.forceViewType})}>
+                    Force preview as
+                </Button>
+                {' '}
+                <Select isOpen={this.state.forceViewDropdownOpen} selected={this.state.forceViewType}
+                        onSelect={(evt , v) => {this.setState({forceViewType: v, forceViewDropdownOpen: false})}}
+                        onOpenChange={(isOpen) => this.setState({forceViewDropdownOpen: isOpen})}
+                        toggle={(t) => <MenuToggle ref={t} onClick={() => this.setState({forceViewDropdownOpen: !this.state.forceViewDropdownOpen})}
+                                                   isExpanded={this.state.forceViewDropdownOpen}>
+                            {this.allViewType.find(it => it.value === this.state.forceViewType)?.label}
+                        </MenuToggle>} shouldFocusToggleOnSelect>
+                    <SelectList>
+                        {this.allViewType.map(it => {
+                            return <SelectOption key={it.value} value={it.value}>{it.label}</SelectOption>
+                        })}
+                    </SelectList>
+                </Select>
+            </Alert>;
+        }
+        switch (this.state.type) {
+            case 'text':
+            case 'unknown':
+                return <TextView path={this.props.path} />;
+            case 'image':
+                return <ImageView path={this.props.path} />;
+            case 'zip':
+                return <ZipView path={this.props.path} />;
+            case 'pdf':
+                return <PdfView path={this.props.path} />;
+            case 'error':
+                return <DataLoadingErrorElement />;
+            default:
+                return <Loading />;
+        }
     }
 
     render() {
-        return (
-            <div>
-                {this.props.path || 'No file selected'}
-            </div>
-        );
+        return this.getComponent();
     }
 }
 
 export default FileView;
+export {Loading, DataLoadingErrorElement};
 
