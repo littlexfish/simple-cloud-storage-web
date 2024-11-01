@@ -204,7 +204,7 @@ class DirectoryView extends React.Component {
             })
             .then(data => {
                 const files = this.apiDataToFiles(data);
-                this.setState({isLoading: false, files: files});
+                this.setState({isLoading: false, isError: false, files: files});
             });
     }
 
