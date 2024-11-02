@@ -1,15 +1,43 @@
-import React, {memo} from "react";
+import React, {createRef, memo} from "react";
 import {
-    Alert, Breadcrumb, BreadcrumbItem, Button, Divider, Dropdown,
-    DropdownItem, DropdownList, MenuToggle, Modal, ModalBody,
-    ModalFooter, ModalHeader, Select, SelectList, SelectOption,
-    SimpleList, SimpleListItem, Spinner, Split, SplitItem,
-    Stack, StackItem, Toolbar, ToolbarContent, ToolbarGroup,
-    ToolbarItem, TreeView
+    Alert,
+    Breadcrumb,
+    BreadcrumbItem,
+    Button,
+    Divider,
+    Drawer,
+    DrawerContent,
+    DrawerContentBody, DrawerHead,
+    DrawerPanelContent,
+    Dropdown,
+    DropdownItem,
+    DropdownList,
+    MenuToggle,
+    Modal,
+    ModalBody,
+    ModalFooter,
+    ModalHeader,
+    Select,
+    SelectList,
+    SelectOption,
+    SimpleList,
+    SimpleListItem,
+    Spinner,
+    Split,
+    SplitItem,
+    Stack,
+    StackItem,
+    Toolbar,
+    ToolbarContent,
+    ToolbarGroup,
+    ToolbarItem,
+    TreeView
 } from "@patternfly/react-core";
 import FolderIcon from "@patternfly/react-icons/dist/esm/icons/folder-icon";
 import FolderOpenIcon from "@patternfly/react-icons/dist/esm/icons/folder-open-icon";
 import FileIcon from "@patternfly/react-icons/dist/esm/icons/file-icon";
+import ListIcon from "@patternfly/react-icons/dist/esm/icons/list-icon";
+
 import {bytesToHumanReadable, getUrl} from "./file.service.js";
 import ImageView from "./file-view/ImageView.jsx";
 import TextView from "./file-view/TextView.jsx";
@@ -22,6 +50,7 @@ class FileView extends React.Component {
         super(props);
         this.state = {
             selectedDirectory: '',
+            drawerExpanded: true,
         }
     }
 
@@ -29,13 +58,60 @@ class FileView extends React.Component {
         this.setState({selectedDirectory: directory});
     }
 
+    breakPath(path) {
+        return path.split('/');
+    }
+
+    breadcrumbItem(name, path, isActive) {
+        if (!isActive) {
+            return <BreadcrumbItem key={path}>
+                <Button variant="plain" isDisabled={true}>{name}</Button>
+            </BreadcrumbItem>
+        }
+        return <BreadcrumbItem key={path}>
+            <Button variant="link" onClick={this.onDirectorySelect.bind(this, path)}>{name}</Button>
+        </BreadcrumbItem>
+    }
+
     render() {
+        const pathList = this.state.selectedDirectory ? this.breakPath(this.state.selectedDirectory) : [];
         return (
-            <Split className="file-view" hasGutter>
-                <SplitItem><FileTree onDirectorySelect={this.onDirectorySelect.bind(this)}/></SplitItem>
-                <SplitItem isFilled><DirectoryView onDirectorySelect={this.onDirectorySelect.bind(this)}
-                                                   selectedDirectory={this.state.selectedDirectory}/></SplitItem>
-            </Split>
+            <Drawer className="file-view" style={{height: '100vh'}} isExpanded={this.state.drawerExpanded}
+                    isInline position="start">
+                <DrawerContent panelContent={
+                    <DrawerPanelContent isResizable defaultSize="250px" minSize="100px" maxSize="50vw">
+                        <DrawerHead>
+                            <FileTree onDirectorySelect={this.onDirectorySelect.bind(this)}/>
+                        </DrawerHead>
+                    </DrawerPanelContent>}>
+                    <DrawerContentBody>
+                        <Stack>
+                            <StackItem>
+                                <Toolbar style={{padding: 0}}>
+                                    <ToolbarContent alignItems="center">
+                                        <ToolbarItem>
+                                            <Button variant="plain" onClick={() => this.setState({drawerExpanded: !this.state.drawerExpanded})}><ListIcon /></Button>
+                                        </ToolbarItem>
+                                        <ToolbarItem variant="separator" />
+                                        <ToolbarGroup variant="label-group">
+                                            <Breadcrumb style={{padding: '8px'}}>
+                                                {this.breadcrumbItem('/', '', pathList.length !== 0)}
+                                                {pathList.map((item, index) => {
+                                                    return this.breadcrumbItem(item, pathList.slice(0, index + 1).join('/'), index !== pathList.length - 1);
+                                                })}
+                                            </Breadcrumb>
+                                        </ToolbarGroup>
+                                    </ToolbarContent>
+                                </Toolbar>
+                            </StackItem>
+                            <StackItem isFilled>
+                                <DirectoryView onDirectorySelect={this.onDirectorySelect.bind(this)}
+                                               selectedDirectory={this.state.selectedDirectory}/>
+                            </StackItem>
+                        </Stack>
+                    </DrawerContentBody>
+                </DrawerContent>
+            </Drawer>
         );
     }
 }
@@ -142,7 +218,7 @@ class FileTree extends React.Component {
     }
 
     scrollToItem(vItem, hItem) {
-        const scrollView = document.getElementById('file-tree-view');
+        const scrollView = document.getElementsByClassName('pf-v6-c-drawer__panel-main')[0];
         const vUlElement = document.getElementById(vItem.id);
         const hUlElement = document.getElementById(hItem.id);
         const vTextElement = vUlElement
@@ -168,16 +244,12 @@ class FileTree extends React.Component {
 
     render() {
         return (
-            <div id="file-tree-view">
-                <div>
-                    <TreeView data={this.state.data}
-                              hasGuides={true}
-                              useMemo={true}
-                              activeItems={this.state.selected}
-                              onExpand={this.onTreeExpend.bind(this)}
-                              onSelect={this.onNodeSelect.bind(this)}/>
-                </div>
-            </div>
+            <TreeView data={this.state.data}
+                      hasGuides={true}
+                      useMemo={true}
+                      activeItems={this.state.selected}
+                      onExpand={this.onTreeExpend.bind(this)}
+                      onSelect={this.onNodeSelect.bind(this)}/>
         );
     }
 }
@@ -196,6 +268,8 @@ class DirectoryView extends React.Component {
                 x: 0,
                 y: 0,
             },
+            uploadModalOpen: false,
+            deleteModalOpen: false,
         }
     }
 
@@ -238,10 +312,6 @@ class DirectoryView extends React.Component {
         return <span className={classList.join(' ')}>{item.name}</span>;
     }
 
-    breakPath(path) {
-        return path.split('/');
-    }
-
     onNewPath(path) {
         this.props.onDirectorySelect && this.props.onDirectorySelect(path);
     }
@@ -263,17 +333,6 @@ class DirectoryView extends React.Component {
     unSelectAll() {
         this.state.files.forEach(it => it.isSelected = false);
         this.forceUpdate();
-    }
-
-    breadcrumbItem(name, path, isActive) {
-        if (!isActive) {
-            return <BreadcrumbItem key={path}>
-                <Button variant="plain" isDisabled={true}>{name}</Button>
-            </BreadcrumbItem>
-        }
-        return <BreadcrumbItem key={path}>
-            <Button variant="link" onClick={this.onNewPath.bind(this, path)}>{name}</Button>
-        </BreadcrumbItem>
     }
 
     buildSimpleListItem(item) {
@@ -355,29 +414,22 @@ class DirectoryView extends React.Component {
     getDropdownItems(selectedFiles) {
         const hasSelectedFiles = selectedFiles.length > 0;
         return <>
-            <DropdownItem onClick={() => {}}>Upload</DropdownItem>
+            <DropdownItem onClick={() => this.setState({uploadModalOpen: true})}>Upload</DropdownItem>
             {hasSelectedFiles && <>
                 <Divider component="li" key="separator" />
                 <DropdownItem onClick={this.tryOpenItem.bind(this, selectedFiles[0])}>Open First File/Directory</DropdownItem>
-                <DropdownItem isDanger onClick={() => {}}>Delete</DropdownItem>
+                <DropdownItem isDanger onClick={() => this.setState({deleteModalOpen: true})}>Delete</DropdownItem>
             </>}
         </>
     }
 
     render() {
-        const pathList = this.props.selectedDirectory ? this.breakPath(this.props.selectedDirectory) : [];
         const selectedFiles = this.getSelectedFiles();
         const hasSelectedFiles = selectedFiles.length > 0;
+        const closeUploadModal = () => this.setState({uploadModalOpen: false})
+        const closeDeleteModal = () => this.setState({deleteModalOpen: false})
         return (
             <Stack className="directory-view">
-                <StackItem>
-                    <Breadcrumb style={{padding: '8px'}}>
-                        {this.breadcrumbItem('/', '', pathList.length !== 0)}
-                        {pathList.map((item, index) => {
-                            return this.breadcrumbItem(item, pathList.slice(0, index + 1).join('/'), index !== pathList.length - 1);
-                        })}
-                    </Breadcrumb>
-                </StackItem>
                 <StackItem>
                     <Toolbar inset={{default: 'insetMd'}} colorVariant="primary" isSticky={true}>
                         <ToolbarContent alignItems="center">
@@ -393,7 +445,7 @@ class DirectoryView extends React.Component {
                                     <Button variant="link" onClick={this.tryOpenItem.bind(this, selectedFiles[0])}>Open First File/Directory</Button>
                                 </ToolbarItem>
                                 <ToolbarItem>
-                                    <Button variant="link" isDanger>Delete</Button>
+                                    <Button variant="link" isDanger onClick={() => this.setState({deleteModalOpen: true})}>Delete</Button>
                                 </ToolbarItem>
                                 <ToolbarItem>
                                     <Button variant="link" onClick={this.unSelectAll.bind(this)}>Unselect All</Button>
@@ -401,7 +453,7 @@ class DirectoryView extends React.Component {
                             </ToolbarGroup>
                             <ToolbarGroup>
                                 <ToolbarItem>
-                                    <Button variant="link">Upload</Button>
+                                    <Button variant="link" onClick={() => this.setState({uploadModalOpen: true})}>Upload</Button>
                                 </ToolbarItem>
                             </ToolbarGroup>
                         </ToolbarContent>
@@ -438,6 +490,33 @@ class DirectoryView extends React.Component {
                     </ModalBody>
                     <ModalFooter style={{justifyContent: 'end'}}>
                         <Button variant="link" onClick={this.download.bind(this)}>Download</Button>
+                    </ModalFooter>
+                </Modal>
+                <Modal variant="medium"
+                       disableFocusTrap
+                       isOpen={this.state.uploadModalOpen}
+                       onEscapePress={closeUploadModal}
+                       onClose={closeUploadModal}>
+                    <ModalHeader title={"Upload Files"} />
+                    <ModalBody>
+                        {/* TODO: upload */}
+                    </ModalBody>
+                    <ModalFooter style={{justifyContent: 'end'}}>
+                        <Button variant="link" onClick={() => console.log("upload")}>Upload</Button>
+                    </ModalFooter>
+                </Modal>
+                <Modal variant="medium"
+                       disableFocusTrap
+                       isOpen={this.state.deleteModalOpen}
+                       onEscapePress={closeDeleteModal}
+                       onClose={closeDeleteModal}>
+                    <ModalHeader title={"Upload Files"} />
+                    <ModalBody>
+                        {/* TODO: delete */}
+                    </ModalBody>
+                    <ModalFooter style={{justifyContent: 'end'}}>
+                        <Button variant="link" onClick={closeDeleteModal}>Cancel</Button>
+                        <Button variant="link" isDanger onClick={() => console.log("delete")}>Delete</Button>
                     </ModalFooter>
                 </Modal>
             </Stack>
