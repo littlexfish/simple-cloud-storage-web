@@ -51,7 +51,7 @@ export default class ZipView extends React.Component {
             return this.state.isError ? <DataLoadingErrorElement /> : <Loading/>;
         }
         if (this.state.content.length === 0) {
-            return <span style={{color: 'gray'}}>Empty</span>
+            return <span className="hint-text">Empty</span>
         }
         let treeData = [];
         this.buildTree(treeData, this.state.content);

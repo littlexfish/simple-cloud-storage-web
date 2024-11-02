@@ -4,12 +4,11 @@ import {getUrl} from "../file.service.js";
 
 export default class PdfView extends React.Component {
 
-
     render() {
         return <Panel>
             <PanelMain>
                 <PanelMainBody>
-                    <iframe src={getUrl('/api/file/download?path=' + (this.props.path || ''))} style={{height: '50vh', width: '100%'}} />
+                    <iframe src={getUrl('/api/file/download?path=' + (this.props.path || ''))} className="pdf-preview" />
                 </PanelMainBody>
             </PanelMain>
         </Panel>

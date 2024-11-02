@@ -31,20 +31,20 @@ export default class TextView extends React.Component {
             return this.state.isError ? <DataLoadingErrorElement /> : <Loading/>;
         }
         if (this.state.content.content.length === 0) {
-            return <span style={{color: 'gray'}}>Empty</span>
+            return <span className="hint-text">Empty</span>
         }
         return <Stack>
             <StackItem>
                 <Panel isScrollable>
                     <PanelMain>
-                        <PanelMainBody><pre style={{tabSize: 4}}>{this.state.content.content}</pre></PanelMainBody>
+                        <PanelMainBody><pre>{this.state.content.content}</pre></PanelMainBody>
                     </PanelMain>
                 </Panel>
             </StackItem>
             {
                 this.state.content.truncate ?
                     <StackItem>
-                        <span style={{color: 'gray'}}>Truncated (Total: {bytesToHumanReadable(this.state.content.size)})</span>
+                        <span className="hint-text">Truncated (Total: {bytesToHumanReadable(this.state.content.size)})</span>
                     </StackItem> :
                     ''
             }

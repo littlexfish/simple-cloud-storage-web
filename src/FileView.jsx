@@ -1,12 +1,11 @@
 import React, {memo} from "react";
 import {
-    Alert, AlertActionLink,
-    Breadcrumb, BreadcrumbItem, Button, MenuToggle,
-    Modal, ModalBody, ModalFooter, ModalHeader, Select, SelectList, SelectOption, SimpleList, SimpleListItem,
-    Spinner,
-    Split, SplitItem,
-    Stack, StackItem,
-    TreeView
+    Alert, Breadcrumb, BreadcrumbItem, Button, Divider, Dropdown,
+    DropdownItem, DropdownList, MenuToggle, Modal, ModalBody,
+    ModalFooter, ModalHeader, Select, SelectList, SelectOption,
+    SimpleList, SimpleListItem, Spinner, Split, SplitItem,
+    Stack, StackItem, Toolbar, ToolbarContent, ToolbarGroup,
+    ToolbarItem, TreeView
 } from "@patternfly/react-core";
 import FolderIcon from "@patternfly/react-icons/dist/esm/icons/folder-icon";
 import FolderOpenIcon from "@patternfly/react-icons/dist/esm/icons/folder-open-icon";
@@ -32,7 +31,7 @@ class FileView extends React.Component {
 
     render() {
         return (
-            <Split style={{height: '100vh'}} hasGutter>
+            <Split className="file-view" hasGutter>
                 <SplitItem><FileTree onDirectorySelect={this.onDirectorySelect.bind(this)}/></SplitItem>
                 <SplitItem isFilled><DirectoryView onDirectorySelect={this.onDirectorySelect.bind(this)}
                                                    selectedDirectory={this.state.selectedDirectory}/></SplitItem>
@@ -41,7 +40,7 @@ class FileView extends React.Component {
     }
 }
 
-const DataLoadingErrorElement = memo((props) => <Alert {...props} style={{textWrap: 'nowrap'}} variant="danger" title="Error on loading data"></Alert>)
+const DataLoadingErrorElement = memo((props) => <Alert {...props} className="nowrap" variant="danger" title="Error on loading data"></Alert>)
 const Loading = memo((props) => <span><Spinner isInline={true} {...props} /> Loading...</span>)
 
 class FileTree extends React.Component {
@@ -169,8 +168,8 @@ class FileTree extends React.Component {
 
     render() {
         return (
-            <div id="file-tree-view" style={{width: '200px', height: '100%', overflow: 'auto'}}>
-                <div style={{width: 'fit-content', minWidth: '200px'}}>
+            <div id="file-tree-view">
+                <div>
                     <TreeView data={this.state.data}
                               hasGuides={true}
                               useMemo={true}
@@ -192,6 +191,11 @@ class DirectoryView extends React.Component {
             files: [],
             isLoading: true,
             isError: false,
+            menu: {
+                popup: false,
+                x: 0,
+                y: 0,
+            },
         }
     }
 
@@ -216,18 +220,22 @@ class DirectoryView extends React.Component {
         const pathPrefix = apiData.path === '' ? '' : apiData.path + '/';
         return apiData.files.map((item) => {
             return {
-                name: this.getNameFromApiDataItem(item),
+                name: item.name,
                 isDirectory: item.isDirectory,
                 isHidden: item.isHidden,
                 size: item.size,
                 path: pathPrefix + item.name,
-                isActive: false,
+                isSelected: false,
             }
         });
     }
 
-    getNameFromApiDataItem(apiDataItem) {
-        return <span className={apiDataItem.isHidden ? 'hidden' : ''}>{apiDataItem.name}</span>;
+    buildNameLabel(item) {
+        let classList = [];
+        if (item.isHidden) {
+            classList.push('hidden');
+        }
+        return <span className={classList.join(' ')}>{item.name}</span>;
     }
 
     breakPath(path) {
@@ -239,7 +247,22 @@ class DirectoryView extends React.Component {
     }
 
     onOpenFile(path) {
+        this.unSelectAll();
         this.setState({openedFile: path});
+    }
+
+    tryOpenItem(item) {
+        if (item.isDirectory) {
+            this.onNewPath(item.path);
+        }
+        else {
+            this.onOpenFile(item.path);
+        }
+    }
+
+    unSelectAll() {
+        this.state.files.forEach(it => it.isSelected = false);
+        this.forceUpdate();
     }
 
     breadcrumbItem(name, path, isActive) {
@@ -255,13 +278,20 @@ class DirectoryView extends React.Component {
 
     buildSimpleListItem(item) {
         return <SimpleListItem key={item.path}
-                               onClick={!item.isDirectory ? this.onOpenFile.bind(this, item.path) : this.onNewPath.bind(this, item.path)}>
+                               className={item.isSelected ? 'selected' : ''}
+                               itemId={item.path}
+                               onDoubleClick={this.tryOpenItem.bind(this, item)}
+                               isActive={item.isSelected}
+                               onClick={() => {
+                                   item.isSelected = !item.isSelected;
+                                   this.forceUpdate();
+                               }}>
             <Split hasGutter>
                 <SplitItem>
                     {item.isDirectory ? <FolderIcon /> : <FileIcon />}
                 </SplitItem>
                 <SplitItem isFilled>
-                    {item.name}
+                    {this.buildNameLabel(item)}
                 </SplitItem>
                 <SplitItem>
                     {item.isDirectory ? '' : bytesToHumanReadable(item.size)}
@@ -302,10 +332,44 @@ class DirectoryView extends React.Component {
             });
     }
 
+    getSelectedFiles() {
+        return this.state.files.filter(it => it.isSelected);
+    }
+
+    setContextOpen(isOpen) {
+        this.setState({menu: {...this.state.menu, popup: isOpen}});
+    }
+
+    contextToggle(ref) {
+        return <div ref={ref} style={{position: 'absolute', top: this.state.menu.y, left: this.state.menu.x}}></div>
+    }
+
+    onContextMenu(evt) {
+        evt.preventDefault();
+        this.setContextOpen(false); // force close dropdown
+        setTimeout(() => {
+            this.setState({menu: {x: evt.clientX, y: evt.clientY, popup: true}});
+        }, 10); // reopen dropdown
+    }
+
+    getDropdownItems(selectedFiles) {
+        const hasSelectedFiles = selectedFiles.length > 0;
+        return <>
+            <DropdownItem onClick={() => {}}>Upload</DropdownItem>
+            {hasSelectedFiles && <>
+                <Divider component="li" key="separator" />
+                <DropdownItem onClick={this.tryOpenItem.bind(this, selectedFiles[0])}>Open First File/Directory</DropdownItem>
+                <DropdownItem isDanger onClick={() => {}}>Delete</DropdownItem>
+            </>}
+        </>
+    }
+
     render() {
         const pathList = this.props.selectedDirectory ? this.breakPath(this.props.selectedDirectory) : [];
+        const selectedFiles = this.getSelectedFiles();
+        const hasSelectedFiles = selectedFiles.length > 0;
         return (
-            <Stack style={{height: '100%'}}>
+            <Stack className="directory-view">
                 <StackItem>
                     <Breadcrumb style={{padding: '8px'}}>
                         {this.breadcrumbItem('/', '', pathList.length !== 0)}
@@ -314,15 +378,55 @@ class DirectoryView extends React.Component {
                         })}
                     </Breadcrumb>
                 </StackItem>
-                <StackItem isFilled>
+                <StackItem>
+                    <Toolbar inset={{default: 'insetMd'}} colorVariant="primary" isSticky={true}>
+                        <ToolbarContent alignItems="center">
+                            <ToolbarGroup alignSelf="center"
+                                          visibility={{default: hasSelectedFiles ? "visible" : "hidden"}}>
+                                <ToolbarItem variant="label" alignItems="center">
+                                    Select {selectedFiles.length} file(s)
+                                </ToolbarItem>
+                            </ToolbarGroup>
+                            <ToolbarGroup variant="label-group"></ToolbarGroup>
+                            <ToolbarGroup visibility={{default: hasSelectedFiles ? "visible" : "hidden"}}>
+                                <ToolbarItem>
+                                    <Button variant="link" onClick={this.tryOpenItem.bind(this, selectedFiles[0])}>Open First File/Directory</Button>
+                                </ToolbarItem>
+                                <ToolbarItem>
+                                    <Button variant="link" isDanger>Delete</Button>
+                                </ToolbarItem>
+                                <ToolbarItem>
+                                    <Button variant="link" onClick={this.unSelectAll.bind(this)}>Unselect All</Button>
+                                </ToolbarItem>
+                            </ToolbarGroup>
+                            <ToolbarGroup>
+                                <ToolbarItem>
+                                    <Button variant="link">Upload</Button>
+                                </ToolbarItem>
+                            </ToolbarGroup>
+                        </ToolbarContent>
+                    </Toolbar>
+                </StackItem>
+                <StackItem isFilled onContextMenu={this.onContextMenu.bind(this)} style={{overflow: 'auto'}}>
                     {
                         this.state.isLoading ? <Loading /> :
                             this.state.isError ? <DataLoadingErrorElement /> :
                                 this.state.files.length > 0 ?
-                                    <SimpleList>{this.state.files.map(this.buildSimpleListItem.bind(this))}</SimpleList> :
+                                    <SimpleList isControlled={false}>
+                                        {this.state.files.map(this.buildSimpleListItem.bind(this))}
+                                    </SimpleList> :
                                     ''
                     }
                 </StackItem>
+                <Dropdown isOpen={this.state.menu.popup}
+                          onSelect={this.setContextOpen.bind(this, false)}
+                          onOpenChange={this.setContextOpen.bind(this)}
+                          toggle={this.contextToggle.bind(this)}
+                          popperProps={{preventOverflow: true}}>
+                    <DropdownList>
+                        {this.getDropdownItems(selectedFiles)}
+                    </DropdownList>
+                </Dropdown>
                 <Modal variant="medium"
                        disableFocusTrap
                        isOpen={this.state.openedFile !== null}

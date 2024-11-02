@@ -1,1 +1,43 @@
 @use '@patternfly/react-core/dist/styles/base.css';
+
+pre {
+  tab-size: 4;
+}
+
+.hidden, .hint-text {
+  opacity: 0.5;
+}
+
+.selected {
+  &, & * {
+    font-weight: 500;
+  }
+}
+
+.nowrap {
+  text-wrap: nowrap;
+}
+
+.file-view {
+  height: 100vh;
+}
+
+#file-tree-view {
+  width: 200px;
+  height: 100%;
+  overflow: auto;
+
+  & > div {
+    width: fit-content;
+    min-width: 200px;
+  }
+}
+
+.directory-view {
+  height: 100%;
+}
+
+.pdf-preview {
+  width: 100%;
+  height: 50vh;
+}

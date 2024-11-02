@@ -5,11 +5,22 @@ import React from "react";
 // https://staging-v6.patternfly.org/
 
 class App extends React.Component {
-  render() {
-    return <>
-      <FileView />
-    </>
-  }
+
+    constructor(props) {
+        super(props);
+    }
+
+    componentDidMount() {
+        document.body.oncontextmenu = (evt) => {
+            evt.preventDefault();
+        }
+    }
+
+    render() {
+        return <>
+            <FileView />
+        </>
+    }
 }
 
-export default App
+export default App;
