@@ -38,20 +38,15 @@ import {
     Toolbar,
     ToolbarContent,
     ToolbarGroup,
-    ToolbarItem,
+    ToolbarItem, Tooltip,
     TreeView
 } from "@patternfly/react-core";
-import FolderIcon from "@patternfly/react-icons/dist/esm/icons/folder-icon";
-import FolderOpenIcon from "@patternfly/react-icons/dist/esm/icons/folder-open-icon";
-import FileIcon from "@patternfly/react-icons/dist/esm/icons/file-icon";
-import UploadIcon from "@patternfly/react-icons/dist/esm/icons/upload-icon";
-import ListIcon from "@patternfly/react-icons/dist/esm/icons/list-icon";
-
 import {bytesToHumanReadable, getUrl, isFilenameValid} from "./file.service.js";
 import ImageView from "./file-view/ImageView.jsx";
 import TextView from "./file-view/TextView.jsx";
 import ZipView from "./file-view/ZipView.jsx";
 import PdfView from "./file-view/PdfView.jsx";
+import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
 
 class FileView extends React.Component {
 
@@ -113,7 +108,9 @@ class FileView extends React.Component {
                             <StackItem>
                                 <Flex>
                                     <FlexItem>
-                                        <Button variant="plain" onClick={() => this.setState({drawerExpanded: !this.state.drawerExpanded})}><ListIcon /></Button>
+                                        <Button variant="plain" onClick={() => this.setState({drawerExpanded: !this.state.drawerExpanded})}>
+                                            <FontAwesomeIcon icon="fas fa-bars" />
+                                        </Button>
                                     </FlexItem>
                                     <Divider
                                         orientation={{
@@ -188,8 +185,8 @@ class FileTree extends React.Component {
             return {
                 id: idPrefix + item.name,
                 name: this.getNameFromApiDataItem(item),
-                icon: item.isDirectory ? <FolderIcon /> : <FileIcon />,
-                expandedIcon: item.isDirectory ? <FolderOpenIcon /> : <FileIcon />,
+                icon: item.isDirectory ? <FontAwesomeIcon icon="fas fa-folder" /> : <FontAwesomeIcon icon="fas fa-file" />,
+                expandedIcon: item.isDirectory ? <FontAwesomeIcon icon="fas fa-folder-open" /> : <FontAwesomeIcon icon="fas fa-file" />,
                 children: item.isDirectory ? [] : null,
                 // additional data
                 isDirectory: item.isDirectory,
@@ -450,7 +447,7 @@ class DirectoryView extends React.Component {
                                onClick={(evt) => this.selectItem(item, evt.ctrlKey, evt.shiftKey)}>
             <Split hasGutter>
                 <SplitItem>
-                    {item.isDirectory ? <FolderIcon /> : <FileIcon />}
+                    {item.isDirectory ? <FontAwesomeIcon icon="fas fa-folder" /> : <FontAwesomeIcon icon="fas fa-file" />}
                 </SplitItem>
                 <SplitItem isFilled>
                     {this.buildNameLabel(item)}
@@ -469,13 +466,9 @@ class DirectoryView extends React.Component {
         }
     }
 
-    getOpenedFileName() {
-        const dir = this.props.selectedDirectory || '';
-        const filePath = this.state.openedFile || '';
-        if (dir.length === 0) {
-            return filePath;
-        }
-        return filePath.slice(dir.length + 1);
+    getFilename(path) {
+        const idx = path.lastIndexOf('/')
+        return idx === -1 ? path : path.slice(idx + 1)
     }
 
     download(files) {
@@ -487,7 +480,7 @@ class DirectoryView extends React.Component {
                     const a = document.createElement('a');
                     a.href = url;
                     // a.target = '_blank';
-                    a.download = this.getOpenedFileName();
+                    a.download = this.getFilename(file);
                     document.body.appendChild(a);
                     a.click();
                     window.URL.revokeObjectURL(url);
@@ -583,26 +576,94 @@ class DirectoryView extends React.Component {
         const hasMultiSelectedFiles = selectedFiles.length > 1;
         const onlyOneSelectedFile = selectedFiles.length === 1;
         return <>
-            <DropdownItem onClick={() => this.setState({uploadModalOpen: true})}>Upload</DropdownItem>
-            <DropdownItem onClick={() => this.openCreateDirModal()}>New Directory</DropdownItem>
+            <DropdownItem icon={<FontAwesomeIcon icon="fas fa-upload" />} onClick={() => this.setState({uploadModalOpen: true})}>Upload</DropdownItem>
+            <DropdownItem icon={<FontAwesomeIcon icon="fas fa-folder-plus" />} onClick={() => this.openCreateDirModal()}>New Directory</DropdownItem>
             {onlyOneSelectedFile && <>
                 <Divider component="li" key="separator" />
-                <DropdownItem onClick={() => this.openRenameModal()}>Rename</DropdownItem>
+                <DropdownItem icon={<FontAwesomeIcon icon="fas fa-pen-to-square" />} onClick={() => this.openRenameModal()}>Rename</DropdownItem>
             </>}
             {hasSelectedFiles && <>
                 <Divider component="li" key="separator" />
-                <DropdownItem onClick={this.tryOpenItem.bind(this, selectedFiles[0])}>Open{hasMultiSelectedFiles && ' First File/Directory'}</DropdownItem>
-                <DropdownItem onClick={() => this.download(selectedFiles.filter(it => !it.isDirectory).map(it => it.path))}>Download</DropdownItem>
-                <DropdownItem isDanger onClick={() => this.setState({deleteModalOpen: true})}>Delete</DropdownItem>
+                <DropdownItem icon={<FontAwesomeIcon icon="fas fa-arrow-up-right-from-square" />}
+                              onClick={this.tryOpenItem.bind(this, selectedFiles[0])}>Open{hasMultiSelectedFiles && ' First File/Directory'}</DropdownItem>
+                <DropdownItem icon={<FontAwesomeIcon icon="fas fa-download" />}
+                              onClick={() => this.download(selectedFiles.filter(it => !it.isDirectory).map(it => it.path))}>Download</DropdownItem>
+                <DropdownItem icon={<FontAwesomeIcon icon="fas fa-trash" />} isDanger
+                              onClick={() => this.setState({deleteModalOpen: true})}>Delete</DropdownItem>
             </>}
+        </>
+    }
+
+    getToolbarItems(selectedFiles) {
+        const hasSelectedFiles = selectedFiles.length > 0;
+        const hasMultiSelectedFiles = selectedFiles.length > 1;
+        const onlyOneSelectedFile = selectedFiles.length === 1;
+        return <>
+            <ToolbarGroup alignSelf="center">
+                <ToolbarItem variant="label" alignItems="center">
+                    <Tooltip content={<>{this.props.showHidden ? 'Hide' : 'Show'} Hidden Files</>}>
+                        <Button variant="link" onClick={() => (this.props.onShowHiddenChange || (() => {}))(!this.props.showHidden)}>
+                            {this.props.showHidden ? <FontAwesomeIcon icon="fas fa-eye-slash" /> : <FontAwesomeIcon icon="fas fa-eye" />}
+                        </Button>
+                    </Tooltip>
+                </ToolbarItem>
+            </ToolbarGroup>
+            <ToolbarGroup alignSelf="center"
+                          visibility={{default: hasMultiSelectedFiles ? "visible" : "hidden"}}>
+                <ToolbarItem variant="label" alignItems="center">
+                    Select {selectedFiles.length} files
+                </ToolbarItem>
+            </ToolbarGroup>
+            <ToolbarGroup variant="label-group"></ToolbarGroup>
+            <ToolbarGroup visibility={{default: hasSelectedFiles ? "visible" : "hidden"}}>
+                <ToolbarItem>
+                    <Tooltip content={<>Open{hasMultiSelectedFiles && ' First File/Directory'}</>}>
+                        <Button variant="link" onClick={this.tryOpenItem.bind(this, selectedFiles[0])}>
+                            <FontAwesomeIcon icon="fas fa-arrow-up-right-from-square" />
+                        </Button>
+                    </Tooltip>
+                </ToolbarItem>
+                <ToolbarItem visibility={{default: hasSelectedFiles ? "visible" : "hidden"}}>
+                    <Tooltip content="Download">
+                        <Button variant="link" onClick={() => this.download(selectedFiles.filter(it => !it.isDirectory).map(it => it.path))}>
+                            <FontAwesomeIcon icon="fas fa-download" />
+                        </Button>
+                    </Tooltip>
+                </ToolbarItem>
+                <ToolbarItem>
+                    <Tooltip content="Delete">
+                        <Button variant="link" isDanger onClick={() => this.setState({deleteModalOpen: true})}>
+                            <FontAwesomeIcon icon="fas fa-trash" />
+                        </Button>
+                    </Tooltip>
+                </ToolbarItem>
+                <ToolbarItem visibility={{default: onlyOneSelectedFile ? "visible" : "hidden"}}>
+                    <Tooltip content="Rename">
+                        <Button variant="link" onClick={() => this.openRenameModal()}><FontAwesomeIcon icon="fas fa-pen-to-square" /></Button>
+                    </Tooltip>
+                </ToolbarItem>
+                <ToolbarItem visibility={{default: hasMultiSelectedFiles ? "visible" : "hidden"}}>
+                    <Tooltip content="Unselect All">
+                        <Button variant="link" onClick={this.unSelectAll.bind(this)}><FontAwesomeIcon icon="fas fa-ban" /></Button>
+                    </Tooltip>
+                </ToolbarItem>
+            </ToolbarGroup>
+            {hasSelectedFiles && <ToolbarItem variant="separator" />}
+            <ToolbarGroup>
+                <ToolbarItem>
+                    <Tooltip content="New Directory">
+                        <Button variant="link" onClick={() => this.openCreateDirModal()}><FontAwesomeIcon icon="fas fa-folder-plus" /></Button>
+                    </Tooltip>
+                    <Tooltip content="Upload">
+                        <Button variant="link" onClick={() => this.setState({uploadModalOpen: true})}><FontAwesomeIcon icon="fas fa-upload" /></Button>
+                    </Tooltip>
+                </ToolbarItem>
+            </ToolbarGroup>
         </>
     }
 
     render() {
         const selectedFiles = this.getSelectedFiles();
-        const hasSelectedFiles = selectedFiles.length > 0;
-        const hasMultiSelectedFiles = selectedFiles.length > 1;
-        const onlyOneSelectedFile = selectedFiles.length === 1;
         const closeUploadModal = () => this.setState({uploadModalOpen: false});
         const closeDeleteModal = () => this.setState({deleteModalOpen: false});
         const showContent = this.filterFiles(this.state.files)
@@ -610,44 +671,7 @@ class DirectoryView extends React.Component {
             <Stack className="directory-view">
                 <StackItem>
                     <Toolbar inset={{default: 'insetMd'}} colorVariant="primary" isSticky={true}>
-                        <ToolbarContent alignItems="center">
-                            <ToolbarGroup alignSelf="center">
-                                <ToolbarItem variant="label" alignItems="center">
-                                    <Checkbox id="show-hidden-files-check" label="Show Hidden Files" isChecked={this.props.showHidden}
-                                                onChange={(evt, checked) => (this.props.onShowHiddenChange || (() => {}))(checked)} />
-                                </ToolbarItem>
-                            </ToolbarGroup>
-                            <ToolbarGroup alignSelf="center"
-                                          visibility={{default: hasMultiSelectedFiles ? "visible" : "hidden"}}>
-                                <ToolbarItem variant="label" alignItems="center">
-                                    Select {selectedFiles.length} files
-                                </ToolbarItem>
-                            </ToolbarGroup>
-                            <ToolbarGroup variant="label-group"></ToolbarGroup>
-                            <ToolbarGroup visibility={{default: hasSelectedFiles ? "visible" : "hidden"}}>
-                                <ToolbarItem>
-                                    <Button variant="link" onClick={this.tryOpenItem.bind(this, selectedFiles[0])}>Open{hasMultiSelectedFiles && ' First File/Directory'}</Button>
-                                </ToolbarItem>
-                                <ToolbarItem visibility={{default: onlyOneSelectedFile ? "visible" : "hidden"}}>
-                                    <Button variant="link" onClick={() => this.openRenameModal()}>Rename</Button>
-                                </ToolbarItem>
-                                <ToolbarItem visibility={{default: hasSelectedFiles ? "visible" : "hidden"}}>
-                                    <Button variant="link" onClick={() => this.download(selectedFiles.filter(it => !it.isDirectory).map(it => it.path))}>Download</Button>
-                                </ToolbarItem>
-                                <ToolbarItem>
-                                    <Button variant="link" isDanger onClick={() => this.setState({deleteModalOpen: true})}>Delete</Button>
-                                </ToolbarItem>
-                                <ToolbarItem visibility={{default: hasMultiSelectedFiles ? "visible" : "hidden"}}>
-                                    <Button variant="link" onClick={this.unSelectAll.bind(this)}>Unselect All</Button>
-                                </ToolbarItem>
-                            </ToolbarGroup>
-                            <ToolbarGroup>
-                                <ToolbarItem>
-                                    <Button variant="link" onClick={() => this.openCreateDirModal()}>New Directory</Button>
-                                    <Button variant="link" onClick={() => this.setState({uploadModalOpen: true})}>Upload</Button>
-                                </ToolbarItem>
-                            </ToolbarGroup>
-                        </ToolbarContent>
+                        <ToolbarContent alignItems="center">{this.getToolbarItems(selectedFiles)}</ToolbarContent>
                     </Toolbar>
                 </StackItem>
                 <StackItem isFilled onContextMenu={this.onContextMenu.bind(this)} style={{overflow: 'auto'}}>
@@ -675,7 +699,7 @@ class DirectoryView extends React.Component {
                        isOpen={this.state.openedFile !== null}
                        onEscapePress={this.onOpenFile.bind(this, null)}
                        onClose={this.onOpenFile.bind(this, null)}>
-                    <ModalHeader title={this.getOpenedFileName()} />
+                    <ModalHeader title={this.getFilename(this.state.openedFile || '')} />
                     <ModalBody>
                         <FileContentView path={this.state.openedFile} />
                     </ModalBody>
@@ -694,7 +718,7 @@ class DirectoryView extends React.Component {
                         <List variant={ListVariant.inline} style={{padding: '0 8px'}}>
                             {selectedFiles.map(it => {
                                 return <ListItem key={it.name}
-                                                 icon={it.isDirectory ? <FolderIcon /> : <FileIcon />}>
+                                                 icon={it.isDirectory ? <FontAwesomeIcon icon="fas fa-folder" /> : <FontAwesomeIcon icon="fas fa-file" />}>
                                     {this.buildNameLabel(it)}
                                 </ListItem>
                             })}
@@ -884,7 +908,7 @@ class FileUploadModal extends React.Component {
                 <MultipleFileUpload
                     onFileDrop={(evt, files) => this.onFilesUpload(files)}>
                     <MultipleFileUploadMain
-                        titleIcon={<UploadIcon />}
+                        titleIcon={<FontAwesomeIcon icon="fas fa-upload" size="2x" />}
                         titleText="Drag and drop files here"
                         titleTextSeparator="or"
                     />
