@@ -1,9 +1,9 @@
-import React, {createRef, memo} from "react";
+import React, {memo} from "react";
 import {
     Alert,
     Breadcrumb,
     BreadcrumbItem,
-    Button,
+    Button, Checkbox,
     Divider,
     Drawer, DrawerCloseButton,
     DrawerContent,
@@ -59,6 +59,10 @@ class FileView extends React.Component {
         super(props);
         this.state = {
             selectedDirectory: '',
+            view: {
+                onlyDirectory: false,
+                showHidden: false,
+            },
             drawerExpanded: false,
             windowWidth: window.innerWidth,
         }
@@ -101,7 +105,7 @@ class FileView extends React.Component {
                     <DrawerPanelContent isResizable defaultSize="250px" minSize="100px" maxSize="50vw">
                         <DrawerHead>
                             {this.state.windowWidth < 768 && <DrawerCloseButton style={{display: 'flex', justifyContent: 'end'}} onClose={() => this.setState({drawerExpanded: !this.state.drawerExpanded})} />}
-                            <FileTree onDirectorySelect={this.onDirectorySelect.bind(this)}/>
+                            <FileTree showHidden={this.state.view.showHidden} onlyDirectory={this.state.view.onlyDirectory} onDirectorySelect={this.onDirectorySelect.bind(this)} />
                         </DrawerHead>
                     </DrawerPanelContent>}>
                     <DrawerContentBody>
@@ -127,7 +131,9 @@ class FileView extends React.Component {
                                 </Flex>
                             </StackItem>
                             <StackItem isFilled>
-                                <DirectoryView onDirectorySelect={this.onDirectorySelect.bind(this)}
+                                <DirectoryView showHidden={this.state.view.showHidden} onlyDirectory={this.state.view.onlyDirectory}
+                                               onShowHiddenChange={(showHidden) => this.setState({view: {...this.state.view, showHidden: showHidden}})}
+                                               onDirectorySelect={this.onDirectorySelect.bind(this)}
                                                selectedDirectory={this.state.selectedDirectory}/>
                             </StackItem>
                         </Stack>
@@ -184,7 +190,10 @@ class FileTree extends React.Component {
                 name: this.getNameFromApiDataItem(item),
                 icon: item.isDirectory ? <FolderIcon /> : <FileIcon />,
                 expandedIcon: item.isDirectory ? <FolderOpenIcon /> : <FileIcon />,
-                children: item.isDirectory ? [] : null
+                children: item.isDirectory ? [] : null,
+                // additional data
+                isDirectory: item.isDirectory,
+                isHidden: item.isHidden,
             };
         });
     }
@@ -193,85 +202,122 @@ class FileTree extends React.Component {
         return <span className={apiDataItem.isHidden ? 'hidden' : ''} style={{textWrap: 'nowrap'}}>{apiDataItem.name}</span>;
     }
 
+    filterTreeData(treeData) {
+        let ret = treeData
+        if (this.props.onlyDirectory || false) {
+            ret = ret.filter(it => it.id === '<root>' || it.isDirectory);
+        }
+        if (!(this.props.showHidden || false)) {
+            ret = ret.filter(it => it.id === '<root>' || !it.isHidden);
+        }
+        return ret;
+    }
+
+    injectRefItemAndCopy(item) {
+        return {...item, ref: item};
+    }
+
+    filterTree(data) {
+        if (data.id === '<root>' || !data.isDirectory || !Array.isArray(data.children)) return;
+        data.children = data.children.map(it => this.injectRefItemAndCopy(it));
+        data.children = this.filterTreeData(data.children);
+        data.children.forEach(it => {
+            this.filterTree(it);
+        });
+    }
+
     onTreeExpend(evt, item, parent) {
-        const hasAnyChild = item.children.length > 0;
+        const ref = item.ref !== undefined ? item.ref : item;
+        const hasAnyChild = ref.children.length > 0;
         if (!hasAnyChild) {
-            item.children = [
+            ref.children = [
                 {
-                    id: `${item.id}/<loading>`,
+                    id: `${ref.id}/<loading>`,
                     name: <span><Spinner isInline={true}/> Loading...</span>
                 }
             ];
             this.forceUpdate();
         }
-        fetch(getUrl('/api/directory?path=' + item.id))
+        fetch(getUrl('/api/directory?path=' + ref.id))
             .catch(error => {
                 console.error('Error:', error);
             })
             .then(response => response.json()).then(data => {
                 const treeData = this.apiDataToTreeData(data);
-                const idExists = item.children
+                const idExists = ref.children
                     .map(it => it.id)
                     .filter(it => !it.endsWith('<loading>'));
                 if (idExists.length === 0) {
-                    item.children = treeData;
+                    ref.children = treeData;
                 }
                 else {
                     const newId = treeData.map(it => it.id);
                     const needAdd = treeData.filter(it => !idExists.includes(it.id));
-                    let children = item.children.filter(it => newId.includes(it.id));
+                    let children = ref.children.filter(it => newId.includes(it.id));
                     children.push(...needAdd);
-                    item.children = children;
+                    ref.children = children;
                 }
                 this.forceUpdate(() => {
-                    const vScrollToItem = item.children.length > 0 ? item.children[0] : item;
-                    const hScrollToItem = item.children.length > 0 ? item.children.reduce((p, c) => p.id.length > c.id.length ? p : c, {id: ''}) : item;
+                    const vScrollToItem = ref.children.length > 0 ? ref.children[0] : ref;
+                    const hScrollToItem = ref.children.length > 0 ? ref.children.reduce((p, c) => p.id.length > c.id.length ? p : c, {id: ''}) : ref;
                     this.scrollToItem(vScrollToItem, hScrollToItem);
                 });
         });
     }
 
     onNodeSelect(evt, item, parent) {
-        this.setState({selected: [item]}, () => {
-            this.scrollToItem(item, item);
+        const ref = item.ref !== undefined ? item.ref : item;
+        this.setState({selected: [ref]}, () => {
+            this.scrollToItem(ref, ref);
         });
-        const selectId = Array.isArray(item.children) ? item.id : parent ? parent.id : '';
+        const selectId = Array.isArray(ref.children) ? ref.id : parent ? parent.id : '';
         this.props.onDirectorySelect && this.props.onDirectorySelect(selectId);
     }
 
     scrollToItem(vItem, hItem) {
+        if (!vItem || !hItem) return;
+
         const scrollView = document.getElementsByClassName('pf-v6-c-drawer__panel-main')[0];
         const vUlElement = document.getElementById(vItem.id);
         const hUlElement = document.getElementById(hItem.id);
+        if (!vUlElement || !hUlElement) return;
+
         const vTextElement = vUlElement
             ?.querySelector(`.pf-v6-c-tree-view__node-container > :last-child`);
         const hTextElement = hUlElement
             ?.querySelector(`.pf-v6-c-tree-view__node-container > :last-child`);
+        if (!vTextElement || !hTextElement) return;
 
         const scrollRect = scrollView.getBoundingClientRect();
         const scrollContainerRect = scrollView.firstElementChild.getBoundingClientRect();
         const vUlRect = vUlElement.getBoundingClientRect();
         const hTextRect = hTextElement?.getBoundingClientRect() || {y: 0, x: 0, width: 0, height: 0};
 
-        if (vTextElement && hTextElement) {
-            const vPos = vUlRect.y - scrollContainerRect.y + vUlRect.height / 2 - scrollRect.height / 2;
-            const hPos = hTextRect.x - scrollContainerRect.x - 46 /* button padding */ - 22 /* icon width */;
-            scrollView.scrollTo({
-                top: vPos,
-                left: hPos,
-                behavior: 'smooth'
-            })
-        }
+        const vPos = vUlRect.y - scrollContainerRect.y + vUlRect.height / 2 - scrollRect.height / 2;
+        const hPos = hTextRect.x - scrollContainerRect.x - 46 /* button padding */ - 22 /* icon width */;
+        scrollView.scrollTo({
+            top: vPos,
+            left: hPos,
+            behavior: 'smooth',
+        });
     }
 
     render() {
+        const renderTree = {
+            id: '',
+            children: this.state.data,
+            // additional data
+            isDirectory: true,
+            isHidden: false,
+        }
+        this.filterTree(renderTree);
         return (
-            <TreeView data={this.state.data}
+            <TreeView data={renderTree.children}
                       hasGuides={true}
                       useMemo={true}
                       activeItems={this.state.selected}
                       onExpand={this.onTreeExpend.bind(this)}
-                      onSelect={this.onNodeSelect.bind(this)}/>
+                      onSelect={this.onNodeSelect.bind(this)} />
         );
     }
 }
@@ -325,6 +371,17 @@ class DirectoryView extends React.Component {
 
     componentDidMount() {
         this.getFiles();
+    }
+
+    filterFiles(apiData) {
+        let ret = apiData
+        if (this.props.onlyDirectory || false) {
+            ret = ret.filter(it => it.isDirectory);
+        }
+        if (!(this.props.showHidden || false)) {
+            ret = ret.filter(it => !it.isHidden);
+        }
+        return ret;
     }
 
     apiDataToFiles(apiData) {
@@ -548,11 +605,18 @@ class DirectoryView extends React.Component {
         const onlyOneSelectedFile = selectedFiles.length === 1;
         const closeUploadModal = () => this.setState({uploadModalOpen: false});
         const closeDeleteModal = () => this.setState({deleteModalOpen: false});
+        const showContent = this.filterFiles(this.state.files)
         return (
             <Stack className="directory-view">
                 <StackItem>
                     <Toolbar inset={{default: 'insetMd'}} colorVariant="primary" isSticky={true}>
                         <ToolbarContent alignItems="center">
+                            <ToolbarGroup alignSelf="center">
+                                <ToolbarItem variant="label" alignItems="center">
+                                    <Checkbox id="show-hidden-files-check" label="Show Hidden Files" isChecked={this.props.showHidden}
+                                                onChange={(evt, checked) => (this.props.onShowHiddenChange || (() => {}))(checked)} />
+                                </ToolbarItem>
+                            </ToolbarGroup>
                             <ToolbarGroup alignSelf="center"
                                           visibility={{default: hasMultiSelectedFiles ? "visible" : "hidden"}}>
                                 <ToolbarItem variant="label" alignItems="center">
@@ -590,9 +654,9 @@ class DirectoryView extends React.Component {
                     {
                         this.state.isLoading ? <Loading /> :
                             this.state.isError ? <DataLoadingErrorElement /> :
-                                this.state.files.length > 0 ?
+                                showContent.length > 0 ?
                                     <SimpleList isControlled={false}>
-                                        {this.state.files.map(this.buildSimpleListItem.bind(this))}
+                                        {showContent.map(this.buildSimpleListItem.bind(this))}
                                     </SimpleList> :
                                     ''
                     }
