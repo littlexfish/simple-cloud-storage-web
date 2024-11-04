@@ -5,18 +5,26 @@ import {
     BreadcrumbItem,
     Button,
     Divider,
-    Drawer,
+    Drawer, DrawerCloseButton,
     DrawerContent,
-    DrawerContentBody, DrawerHead,
+    DrawerContentBody,
+    DrawerHead,
     DrawerPanelContent,
     Dropdown,
     DropdownItem,
-    DropdownList,
+    DropdownList, Flex, FlexItem, HelperText, HelperTextItem,
+    List,
+    ListItem,
+    ListVariant,
     MenuToggle,
     Modal,
     ModalBody,
     ModalFooter,
     ModalHeader,
+    MultipleFileUpload,
+    MultipleFileUploadMain,
+    MultipleFileUploadStatus,
+    MultipleFileUploadStatusItem,
     Select,
     SelectList,
     SelectOption,
@@ -26,7 +34,7 @@ import {
     Split,
     SplitItem,
     Stack,
-    StackItem,
+    StackItem, TextInput,
     Toolbar,
     ToolbarContent,
     ToolbarGroup,
@@ -36,9 +44,10 @@ import {
 import FolderIcon from "@patternfly/react-icons/dist/esm/icons/folder-icon";
 import FolderOpenIcon from "@patternfly/react-icons/dist/esm/icons/folder-open-icon";
 import FileIcon from "@patternfly/react-icons/dist/esm/icons/file-icon";
+import UploadIcon from "@patternfly/react-icons/dist/esm/icons/upload-icon";
 import ListIcon from "@patternfly/react-icons/dist/esm/icons/list-icon";
 
-import {bytesToHumanReadable, getUrl} from "./file.service.js";
+import {bytesToHumanReadable, getUrl, isFilenameValid} from "./file.service.js";
 import ImageView from "./file-view/ImageView.jsx";
 import TextView from "./file-view/TextView.jsx";
 import ZipView from "./file-view/ZipView.jsx";
@@ -50,8 +59,18 @@ class FileView extends React.Component {
         super(props);
         this.state = {
             selectedDirectory: '',
-            drawerExpanded: true,
+            drawerExpanded: false,
+            windowWidth: window.innerWidth,
         }
+    }
+
+    componentDidMount() {
+        window.addEventListener('resize', () => {
+            this.setState({windowWidth: window.innerWidth});
+        });
+        setTimeout(() => {
+            this.setState({drawerExpanded: this.state.windowWidth > 768});
+        }, 100);
     }
 
     onDirectorySelect(directory) {
@@ -81,28 +100,31 @@ class FileView extends React.Component {
                 <DrawerContent panelContent={
                     <DrawerPanelContent isResizable defaultSize="250px" minSize="100px" maxSize="50vw">
                         <DrawerHead>
+                            {this.state.windowWidth < 768 && <DrawerCloseButton style={{display: 'flex', justifyContent: 'end'}} onClose={() => this.setState({drawerExpanded: !this.state.drawerExpanded})} />}
                             <FileTree onDirectorySelect={this.onDirectorySelect.bind(this)}/>
                         </DrawerHead>
                     </DrawerPanelContent>}>
                     <DrawerContentBody>
                         <Stack>
                             <StackItem>
-                                <Toolbar style={{padding: 0}}>
-                                    <ToolbarContent alignItems="center">
-                                        <ToolbarItem>
-                                            <Button variant="plain" onClick={() => this.setState({drawerExpanded: !this.state.drawerExpanded})}><ListIcon /></Button>
-                                        </ToolbarItem>
-                                        <ToolbarItem variant="separator" />
-                                        <ToolbarGroup variant="label-group">
-                                            <Breadcrumb style={{padding: '8px'}}>
-                                                {this.breadcrumbItem('/', '', pathList.length !== 0)}
-                                                {pathList.map((item, index) => {
-                                                    return this.breadcrumbItem(item, pathList.slice(0, index + 1).join('/'), index !== pathList.length - 1);
-                                                })}
-                                            </Breadcrumb>
-                                        </ToolbarGroup>
-                                    </ToolbarContent>
-                                </Toolbar>
+                                <Flex>
+                                    <FlexItem>
+                                        <Button variant="plain" onClick={() => this.setState({drawerExpanded: !this.state.drawerExpanded})}><ListIcon /></Button>
+                                    </FlexItem>
+                                    <Divider
+                                        orientation={{
+                                            default: 'vertical'
+                                        }}
+                                    />
+                                    <FlexItem>
+                                        <Breadcrumb style={{padding: '8px'}}>
+                                            {this.breadcrumbItem('/', '', pathList.length !== 0)}
+                                            {pathList.map((item, index) => {
+                                                return this.breadcrumbItem(item, pathList.slice(0, index + 1).join('/'), index !== pathList.length - 1);
+                                            })}
+                                        </Breadcrumb>
+                                    </FlexItem>
+                                </Flex>
                             </StackItem>
                             <StackItem isFilled>
                                 <DirectoryView onDirectorySelect={this.onDirectorySelect.bind(this)}
@@ -168,7 +190,7 @@ class FileTree extends React.Component {
     }
 
     getNameFromApiDataItem(apiDataItem) {
-        return <span className={apiDataItem.isHidden ? 'hidden' : ''}>{apiDataItem.name}</span>;
+        return <span className={apiDataItem.isHidden ? 'hidden' : ''} style={{textWrap: 'nowrap'}}>{apiDataItem.name}</span>;
     }
 
     onTreeExpend(evt, item, parent) {
@@ -270,6 +292,16 @@ class DirectoryView extends React.Component {
             },
             uploadModalOpen: false,
             deleteModalOpen: false,
+            nameModal: {
+                open: false,
+                title: '',
+                placeholder: '',
+                content: '',
+                confirmText: '',
+                onConfirm: () => {},
+            },
+            renameModalOpen: false,
+            renameModalContent: '',
         }
     }
 
@@ -284,6 +316,11 @@ class DirectoryView extends React.Component {
                 const files = this.apiDataToFiles(data);
                 this.setState({isLoading: false, isError: false, files: files});
             });
+    }
+
+    reload() {
+        this.setState({isLoading: true, isError: false});
+        this.getFiles()
     }
 
     componentDidMount() {
@@ -335,16 +372,25 @@ class DirectoryView extends React.Component {
         this.forceUpdate();
     }
 
+    selectItem(item, ctrl, shift) {
+        if (ctrl || shift) {
+            item.isSelected = !item.isSelected;
+        }
+        else {
+            this.unSelectAll();
+            item.isSelected = true;
+        }
+        this.forceUpdate();
+    }
+
     buildSimpleListItem(item) {
         return <SimpleListItem key={item.path}
                                className={item.isSelected ? 'selected' : ''}
                                itemId={item.path}
                                onDoubleClick={this.tryOpenItem.bind(this, item)}
                                isActive={item.isSelected}
-                               onClick={() => {
-                                   item.isSelected = !item.isSelected;
-                                   this.forceUpdate();
-                               }}>
+                               onContextMenu={(evt) => this.selectItem(item, evt.ctrlKey, evt.shiftKey)}
+                               onClick={(evt) => this.selectItem(item, evt.ctrlKey, evt.shiftKey)}>
             <Split hasGutter>
                 <SplitItem>
                     {item.isDirectory ? <FolderIcon /> : <FileIcon />}
@@ -375,20 +421,22 @@ class DirectoryView extends React.Component {
         return filePath.slice(dir.length + 1);
     }
 
-    download() {
-        fetch(getUrl('/api/file/download?path=' + this.state.openedFile))
-            .then(res => res.blob())
-            .then(blob => {
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                // a.target = '_blank';
-                a.download = this.getOpenedFileName();
-                document.body.appendChild(a);
-                a.click();
-                window.URL.revokeObjectURL(url);
-                a.remove();
-            });
+    download(files) {
+        files.forEach(file => {
+            fetch(getUrl('/api/file/download?path=' + file))
+                .then(res => res.blob())
+                .then(blob => {
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    // a.target = '_blank';
+                    a.download = this.getOpenedFileName();
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    a.remove();
+                });
+        })
     }
 
     getSelectedFiles() {
@@ -411,13 +459,83 @@ class DirectoryView extends React.Component {
         }, 10); // reopen dropdown
     }
 
+    closeNameModal() {
+        this.setState({nameModal: {...this.state.nameModal, open: false}});
+    }
+
+    rename(name, newName) {
+        const selected = this.getSelectedFiles()[0].path;
+        fetch(getUrl('/api/file/rename?path=' + selected), {
+            method: 'PUT',
+            body: newName
+        })
+            .then(res => res.json())
+            .then(data => this.reload())
+            .catch(err => {
+                console.error(err);
+            });
+    }
+
+    delete(rec) {
+        const selected = this.getSelectedFiles();
+        Promise.all(selected.map(it => {
+            return fetch(getUrl('/api/file/delete?path=' + it.path + '&recursive=' + rec), {
+                method: 'DELETE'
+            })
+        }))
+            .then(res => Promise.all(res.map(it => it.json())))
+            .then(data => this.reload())
+            .catch(err => {
+                console.error(err);
+            });
+        this.setState({deleteModalOpen: false});
+    }
+
+    openRenameModal() {
+        const oldName = this.getSelectedFiles()[0].name;
+        this.setState({nameModal: {open: true, title: 'Rename',
+                confirmText: 'Rename', placeholder: oldName,
+                content: oldName, onConfirm: () => {
+                    this.rename(oldName, this.state.nameModal.content);
+                    this.closeNameModal();
+                }}});
+    }
+
+    createDir(name) {
+        fetch(getUrl('/api/directory/create?path=' + this.props.selectedDirectory + '/' + name), {
+            method: 'POST'
+        })
+            .then(res => res.json())
+            .then(data => this.reload())
+            .catch(err => {
+                console.error(err);
+            });
+    }
+
+    openCreateDirModal() {
+        this.setState({nameModal: {open: true, title: 'Create Directory',
+                confirmText: 'Create', placeholder: '<new>',
+                content: 'New Directory', onConfirm: () => {
+                    this.createDir(this.state.nameModal.content);
+                    this.closeNameModal();
+                }}})
+    }
+
     getDropdownItems(selectedFiles) {
         const hasSelectedFiles = selectedFiles.length > 0;
+        const hasMultiSelectedFiles = selectedFiles.length > 1;
+        const onlyOneSelectedFile = selectedFiles.length === 1;
         return <>
             <DropdownItem onClick={() => this.setState({uploadModalOpen: true})}>Upload</DropdownItem>
+            <DropdownItem onClick={() => this.openCreateDirModal()}>New Directory</DropdownItem>
+            {onlyOneSelectedFile && <>
+                <Divider component="li" key="separator" />
+                <DropdownItem onClick={() => this.openRenameModal()}>Rename</DropdownItem>
+            </>}
             {hasSelectedFiles && <>
                 <Divider component="li" key="separator" />
-                <DropdownItem onClick={this.tryOpenItem.bind(this, selectedFiles[0])}>Open First File/Directory</DropdownItem>
+                <DropdownItem onClick={this.tryOpenItem.bind(this, selectedFiles[0])}>Open{hasMultiSelectedFiles && ' First File/Directory'}</DropdownItem>
+                <DropdownItem onClick={() => this.download(selectedFiles.filter(it => !it.isDirectory).map(it => it.path))}>Download</DropdownItem>
                 <DropdownItem isDanger onClick={() => this.setState({deleteModalOpen: true})}>Delete</DropdownItem>
             </>}
         </>
@@ -426,33 +544,42 @@ class DirectoryView extends React.Component {
     render() {
         const selectedFiles = this.getSelectedFiles();
         const hasSelectedFiles = selectedFiles.length > 0;
-        const closeUploadModal = () => this.setState({uploadModalOpen: false})
-        const closeDeleteModal = () => this.setState({deleteModalOpen: false})
+        const hasMultiSelectedFiles = selectedFiles.length > 1;
+        const onlyOneSelectedFile = selectedFiles.length === 1;
+        const closeUploadModal = () => this.setState({uploadModalOpen: false});
+        const closeDeleteModal = () => this.setState({deleteModalOpen: false});
         return (
             <Stack className="directory-view">
                 <StackItem>
                     <Toolbar inset={{default: 'insetMd'}} colorVariant="primary" isSticky={true}>
                         <ToolbarContent alignItems="center">
                             <ToolbarGroup alignSelf="center"
-                                          visibility={{default: hasSelectedFiles ? "visible" : "hidden"}}>
+                                          visibility={{default: hasMultiSelectedFiles ? "visible" : "hidden"}}>
                                 <ToolbarItem variant="label" alignItems="center">
-                                    Select {selectedFiles.length} file(s)
+                                    Select {selectedFiles.length} files
                                 </ToolbarItem>
                             </ToolbarGroup>
                             <ToolbarGroup variant="label-group"></ToolbarGroup>
                             <ToolbarGroup visibility={{default: hasSelectedFiles ? "visible" : "hidden"}}>
                                 <ToolbarItem>
-                                    <Button variant="link" onClick={this.tryOpenItem.bind(this, selectedFiles[0])}>Open First File/Directory</Button>
+                                    <Button variant="link" onClick={this.tryOpenItem.bind(this, selectedFiles[0])}>Open{hasMultiSelectedFiles && ' First File/Directory'}</Button>
+                                </ToolbarItem>
+                                <ToolbarItem visibility={{default: onlyOneSelectedFile ? "visible" : "hidden"}}>
+                                    <Button variant="link" onClick={() => this.openRenameModal()}>Rename</Button>
+                                </ToolbarItem>
+                                <ToolbarItem visibility={{default: hasSelectedFiles ? "visible" : "hidden"}}>
+                                    <Button variant="link" onClick={() => this.download(selectedFiles.filter(it => !it.isDirectory).map(it => it.path))}>Download</Button>
                                 </ToolbarItem>
                                 <ToolbarItem>
                                     <Button variant="link" isDanger onClick={() => this.setState({deleteModalOpen: true})}>Delete</Button>
                                 </ToolbarItem>
-                                <ToolbarItem>
+                                <ToolbarItem visibility={{default: hasMultiSelectedFiles ? "visible" : "hidden"}}>
                                     <Button variant="link" onClick={this.unSelectAll.bind(this)}>Unselect All</Button>
                                 </ToolbarItem>
                             </ToolbarGroup>
                             <ToolbarGroup>
                                 <ToolbarItem>
+                                    <Button variant="link" onClick={() => this.openCreateDirModal()}>New Directory</Button>
                                     <Button variant="link" onClick={() => this.setState({uploadModalOpen: true})}>Upload</Button>
                                 </ToolbarItem>
                             </ToolbarGroup>
@@ -489,39 +616,257 @@ class DirectoryView extends React.Component {
                         <FileContentView path={this.state.openedFile} />
                     </ModalBody>
                     <ModalFooter style={{justifyContent: 'end'}}>
-                        <Button variant="link" onClick={this.download.bind(this)}>Download</Button>
+                        <Button variant="link" onClick={() => this.download([this.state.openedFile])}>Download</Button>
                     </ModalFooter>
                 </Modal>
-                <Modal variant="medium"
-                       disableFocusTrap
-                       isOpen={this.state.uploadModalOpen}
-                       onEscapePress={closeUploadModal}
-                       onClose={closeUploadModal}>
-                    <ModalHeader title={"Upload Files"} />
-                    <ModalBody>
-                        {/* TODO: upload */}
-                    </ModalBody>
-                    <ModalFooter style={{justifyContent: 'end'}}>
-                        <Button variant="link" onClick={() => console.log("upload")}>Upload</Button>
-                    </ModalFooter>
-                </Modal>
+                <FileUploadModal path={this.props.selectedDirectory} onUploadReload={() => this.reload()}
+                                 isOpen={this.state.uploadModalOpen} onClose={closeUploadModal} />
                 <Modal variant="medium"
                        disableFocusTrap
                        isOpen={this.state.deleteModalOpen}
-                       onEscapePress={closeDeleteModal}
-                       onClose={closeDeleteModal}>
-                    <ModalHeader title={"Upload Files"} />
+                       onEscapePress={closeDeleteModal}>
+                    <ModalHeader titleIconVariant="danger" title="Are you sure you want to delete the followings files?"/>
                     <ModalBody>
-                        {/* TODO: delete */}
+                        <List variant={ListVariant.inline} style={{padding: '0 8px'}}>
+                            {selectedFiles.map(it => {
+                                return <ListItem key={it.name}
+                                                 icon={it.isDirectory ? <FolderIcon /> : <FileIcon />}>
+                                    {this.buildNameLabel(it)}
+                                </ListItem>
+                            })}
+                        </List>
                     </ModalBody>
                     <ModalFooter style={{justifyContent: 'end'}}>
                         <Button variant="link" onClick={closeDeleteModal}>Cancel</Button>
-                        <Button variant="link" isDanger onClick={() => console.log("delete")}>Delete</Button>
+                        <Button variant="link" isDanger onDoubleClick={() => this.delete(true)}>Delete Recursively(Double Click)</Button>
+                        <Button variant="link" isDanger onDoubleClick={() => this.delete(false)}>Delete(Double Click)</Button>
                     </ModalFooter>
                 </Modal>
+                <NameModal isOpen={this.state.nameModal.open} title={this.state.nameModal.title} placeholder={this.state.nameModal.placeholder}
+                           content={this.state.nameModal.content} confirmText={this.state.nameModal.confirmText}
+                           onCancel={this.closeNameModal.bind(this)} onConfirm={this.state.nameModal.onConfirm}
+                           onChangeContent={(content) => this.setState({nameModal: {...this.state.nameModal, content: content}})} />
             </Stack>
         );
     }
+}
+
+class NameModal extends React.Component {
+
+    constructor(props) {
+        super(props);
+    }
+
+    render() {
+        const onCancel = this.props.onCancel || (() => {})
+        const valid = isFilenameValid(this.props.content)
+        return <Modal variant="small"
+                      disableFocusTrap
+                      isOpen={this.props.isOpen || false}
+                      onEscapePress={onCancel}
+                      onClose={onCancel}>
+            <ModalHeader title={this.props.title || ""} />
+            <ModalBody>
+                <TextInput placeholder={this.props.placeholder} value={this.props.content} type="text"
+                           validated={valid ? 'success' : 'error'}
+                           onChange={(evt, value) => (this.props.onChangeContent || (() => {}))(value)}/>
+                <HelperText>
+                    {!valid && <HelperTextItem variant="error">
+                        Filename is invalid<br />
+                        <List>
+                            <ListItem>Must not be empty</ListItem>
+                            <ListItem>Must not be . or ..</ListItem>
+                            <ListItem>Must not contain / \ * : &lt; &gt; ? &#34; |</ListItem>
+                            <ListItem>Must not have a space at the beginning or end</ListItem>
+                        </List>
+                    </HelperTextItem>}
+                </HelperText>
+            </ModalBody>
+            <ModalFooter style={{justifyContent: 'end'}}>
+                <Button variant="link" isDisabled={!valid} onClick={this.props.onConfirm || (() => {})}>
+                    {this.props.confirmText || "Confirm"}
+                </Button>
+            </ModalFooter>
+        </Modal>
+    }
+}
+
+class FileUploadModal extends React.Component {
+
+    constructor(props) {
+        super(props);
+        this.state = {
+            uploadFiles: [],
+            existsNames: [],
+            processFiles: [],
+            finishFiles: [],
+        }
+        this.reloadTimer = null;
+        this.reloadInterval = 1000;
+    }
+
+    reloadFiles() {
+        clearTimeout(this.reloadTimer);
+        this.reloadTimer = setTimeout(this.props.onUploadReload || (() => {}), this.reloadInterval);
+    }
+
+    /**
+     * @param files {File[]}
+     */
+    onFilesUpload(files) {
+        this.setState({uploadFiles: files}, () => {
+            fetch(getUrl('/api/file/exists?path=' + this.props.path), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(files.map(it => it.name))
+            })
+                .then(res => res.json())
+                .then(data => {
+                    const existsNames = data.filter(it => it.isDirectory !== null);
+                    if (existsNames.length > 0) {
+                        this.setState({existsNames: existsNames.map(it => it.name)});
+                    }
+                    else {
+                        this.setState({processFiles: files}, () => this.uploadFiles());
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
+                });
+        });
+    }
+
+    setProcessingFileStatus(file, state) {
+        const files = this.state.finishFiles;
+        const index = files.findIndex(it => it.file === file);
+        if (index !== -1) {
+            files[index].state = state;
+        }
+        else {
+            files.push({file: file, state: state, reloaded: false});
+        }
+        this.forceUpdate();
+    }
+
+    uploadFile(file) {
+        this.removeFileFromProcessing(file);
+        const formData = new FormData();
+        formData.set('file', file);
+        const xhr = new XMLHttpRequest();
+        xhr.onloadstart = () => {
+            this.setProcessingFileStatus(file, '0');
+        }
+        xhr.onload = () => {
+            this.setProcessingFileStatus(file, 'success');
+            this.reloadFiles();
+        }
+        xhr.onerror = () => {
+            this.setProcessingFileStatus(file, 'error');
+        }
+        xhr.onprogress = (evt) => {
+            if (evt.lengthComputable) {
+                const percentComplete = (evt.loaded / evt.total) * 100;
+                this.setProcessingFileStatus(file, '' + percentComplete);
+            }
+        }
+        xhr.open('POST', getUrl('/api/file/upload?path=' + this.props.path), true);
+        xhr.send(formData);
+    }
+
+    uploadFiles() {
+        this.state.processFiles.forEach(it => {
+            this.uploadFile(it);
+        });
+    }
+
+    removeFileFromProcessing(file) {
+        const files = this.state.uploadFiles;
+        const index = files.findIndex(it => it === file);
+        if (index !== -1) {
+            files.splice(index, 1);
+            this.setState({uploadFiles: files});
+        }
+    }
+
+    removeFileFromFinish(file) {
+        const files = this.state.finishFiles;
+        const index = files.findIndex(it => it === file);
+        if (index !== -1) {
+            files.splice(index, 1);
+            this.setState({finishFiles: files});
+        }
+    }
+
+    onClose() {
+        this.setState({uploadFiles: [], processFiles: [], finishFiles: []});
+        this.props.onClose();
+    }
+
+    render() {
+        const finishFiles = this.state.finishFiles;
+        const successFiles = finishFiles.filter(it => it.state === 'success');
+        const errorFiles = finishFiles.filter(it => it.state === 'error');
+        const finishCount = successFiles.length + errorFiles.length;
+        const hasErrorFiles = errorFiles.length > 0;
+        return <Modal variant="medium"
+                      disableFocusTrap
+                      isOpen={this.props.isOpen}
+                      onEscapePress={this.onClose.bind(this)}
+                      onClose={this.onClose.bind(this)}>
+            <ModalHeader title={"Upload Files"} />
+            <ModalBody>
+                <MultipleFileUpload
+                    onFileDrop={(evt, files) => this.onFilesUpload(files)}>
+                    <MultipleFileUploadMain
+                        titleIcon={<UploadIcon />}
+                        titleText="Drag and drop files here"
+                        titleTextSeparator="or"
+                    />
+                    {this.state.finishFiles.length > 0 && (
+                        <MultipleFileUploadStatus
+                            statusToggleText={`${finishCount} of ${finishFiles.length} files uploaded`}
+                            statusToggleIcon={finishCount < finishFiles.length ? 'inProgress' : hasErrorFiles ? 'danger' : 'success'}>
+                            {this.state.finishFiles.map(file => <MultipleFileUploadStatusItem
+                                key={file.file.name}
+                                file={file.file} onClearClick={this.removeFileFromFinish.bind(this, file)}
+                                progressValue={file.state === 'success' ? 100 : isNaN(file.state) ? 0 : +file.state}
+                                progressVariant={file.state === 'error' ? 'danger' : 'success'}>
+                            </MultipleFileUploadStatusItem>)}
+                        </MultipleFileUploadStatus>
+                    )}
+                </MultipleFileUpload>
+            </ModalBody>
+            <Modal variant="medium"
+                   disableFocusTrap
+                   isOpen={this.state.existsNames.length > 0}
+                   onEscapePress={() => this.setState({existsNames: []})}
+                   onClose={() => this.setState({existsNames: []})}>
+                <ModalHeader titleIconVariant="warning" title="Files Exists" />
+                <ModalBody>
+                    Following files already exists:
+                    <List>
+                        {this.state.existsNames.map(it => {
+                            return <ListItem key={it}>
+                                {it}
+                            </ListItem>
+                        })}
+                    </List>
+                </ModalBody>
+                <ModalFooter style={{justifyContent: 'end'}}>
+                    <Button variant="link" onClick={() => this.setState({existsNames: [], uploadFiles: []})}>Cancel</Button>
+                    <Button variant="link"
+                            onClick={() => this.setState({existsNames: [],
+                                processFiles: this.state.uploadFiles.filter(it => !this.state.existsNames.includes(it.name))},
+                                () => this.uploadFiles())}>Upload Not Exists</Button>
+                    <Button variant="link" isDanger
+                            onClick={() => this.setState({existsNames: [], processFiles: [...this.state.uploadFiles]}, () => this.uploadFiles())}>Override</Button>
+                </ModalFooter>
+            </Modal>
+        </Modal>
+    }
+
 }
 
 class FileContentView extends React.Component {
