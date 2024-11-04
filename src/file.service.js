@@ -15,4 +15,14 @@ function bytesToHumanReadable(bytes) {
     return (bytes / Math.pow(1024, i)).toFixed(2) + ' ' + sizes[i];
 }
 
-export { getUrl, bytesToHumanReadable };
+const fileValidRegex = /^([^/\\*:<>?"|\s][^/\\*:<>?"|]*[^/\\*:<>?"|\s]|[^/\\*:<>?"|\s])$/;
+
+function isFilenameValid(name) {
+    if (name === null || name === undefined || name === '' ||
+        name === '.' || name === '..') {
+        return false
+    }
+    return fileValidRegex.test(name);
+}
+
+export { getUrl, bytesToHumanReadable, isFilenameValid };
