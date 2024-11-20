@@ -1,4 +1,4 @@
-import React, {memo} from "react";
+import React, {memo, startTransition, useCallback, useState} from "react";
 import {
     Alert,
     Breadcrumb,
@@ -48,97 +48,84 @@ import ZipView from "./file-view/ZipView.jsx";
 import PdfView from "./file-view/PdfView.jsx";
 import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
 
-class FileView extends React.Component {
+function FileView(props) {
+    /* hooks */
 
-    constructor(props) {
-        super(props);
-        this.state = {
-            selectedDirectory: '',
-            view: {
-                onlyDirectory: false,
-                showHidden: false,
-            },
-            drawerExpanded: false,
-            windowWidth: window.innerWidth,
-        }
-    }
-
-    componentDidMount() {
+    const [selectedDirectory, setSelectedDirectory] = useState('');
+    const [view, setView] = useState({
+        onlyDirectory: false,
+        showHidden: false,
+    });
+    const [drawerExpanded, setDrawerExpanded] = useState(false);
+    const [windowWidth, setWindowWidth] = useState(window.innerWidth);
+    useCallback(() => { // only call once on mount
         window.addEventListener('resize', () => {
-            this.setState({windowWidth: window.innerWidth});
+            setWindowWidth(window.innerWidth);
         });
         setTimeout(() => {
-            this.setState({drawerExpanded: this.state.windowWidth > 768});
+            setDrawerExpanded(windowWidth > 768);
         }, 100);
-    }
+    }, []);
 
-    onDirectorySelect(directory) {
-        this.setState({selectedDirectory: directory});
-    }
+    /* inner functions */
 
-    breakPath(path) {
-        return path.split('/');
-    }
-
-    breadcrumbItem(name, path, isActive) {
+    function breadcrumbItem(name, path, isActive) {
         if (!isActive) {
             return <BreadcrumbItem key={path}>
                 <Button variant="plain" isDisabled={true}>{name}</Button>
             </BreadcrumbItem>
         }
         return <BreadcrumbItem key={path}>
-            <Button variant="link" onClick={this.onDirectorySelect.bind(this, path)}>{name}</Button>
+            <Button variant="link" onClick={() => setSelectedDirectory(path)}>{name}</Button>
         </BreadcrumbItem>
     }
 
-    render() {
-        const pathList = this.state.selectedDirectory ? this.breakPath(this.state.selectedDirectory) : [];
-        return (
-            <Drawer className="file-view" style={{height: '100vh'}} isExpanded={this.state.drawerExpanded}
-                    isInline position="start">
-                <DrawerContent panelContent={
-                    <DrawerPanelContent isResizable defaultSize="250px" minSize="100px" maxSize="50vw">
-                        <DrawerHead>
-                            {this.state.windowWidth < 768 && <DrawerCloseButton style={{display: 'flex', justifyContent: 'end'}} onClose={() => this.setState({drawerExpanded: !this.state.drawerExpanded})} />}
-                            <FileTree showHidden={this.state.view.showHidden} onlyDirectory={this.state.view.onlyDirectory} onDirectorySelect={this.onDirectorySelect.bind(this)} />
-                        </DrawerHead>
-                    </DrawerPanelContent>}>
-                    <DrawerContentBody>
-                        <Stack>
-                            <StackItem>
-                                <Flex>
-                                    <FlexItem>
-                                        <Button variant="plain" onClick={() => this.setState({drawerExpanded: !this.state.drawerExpanded})}>
-                                            <FontAwesomeIcon icon="fas fa-bars" />
-                                        </Button>
-                                    </FlexItem>
-                                    <Divider
-                                        orientation={{
-                                            default: 'vertical'
-                                        }}
-                                    />
-                                    <FlexItem>
-                                        <Breadcrumb style={{padding: '8px'}}>
-                                            {this.breadcrumbItem('/', '', pathList.length !== 0)}
-                                            {pathList.map((item, index) => {
-                                                return this.breadcrumbItem(item, pathList.slice(0, index + 1).join('/'), index !== pathList.length - 1);
-                                            })}
-                                        </Breadcrumb>
-                                    </FlexItem>
-                                </Flex>
-                            </StackItem>
-                            <StackItem isFilled>
-                                <DirectoryView showHidden={this.state.view.showHidden} onlyDirectory={this.state.view.onlyDirectory}
-                                               onShowHiddenChange={(showHidden) => this.setState({view: {...this.state.view, showHidden: showHidden}})}
-                                               onDirectorySelect={this.onDirectorySelect.bind(this)}
-                                               selectedDirectory={this.state.selectedDirectory}/>
-                            </StackItem>
-                        </Stack>
-                    </DrawerContentBody>
-                </DrawerContent>
-            </Drawer>
-        );
-    }
+    const pathList = selectedDirectory ? selectedDirectory.split('/') : [];
+    return (
+        <Drawer className="file-view" style={{height: '100vh'}} isExpanded={drawerExpanded}
+                isInline position="start">
+            <DrawerContent panelContent={
+                <DrawerPanelContent isResizable defaultSize="250px" minSize="100px" maxSize="50vw">
+                    <DrawerHead>
+                        {windowWidth < 768 && <DrawerCloseButton style={{display: 'flex', justifyContent: 'end'}} onClose={() => setDrawerExpanded(!drawerExpanded)} />}
+                        <FileTree showHidden={view.showHidden} onlyDirectory={view.onlyDirectory} onDirectorySelect={(path) => setSelectedDirectory(path)} />
+                    </DrawerHead>
+                </DrawerPanelContent>}>
+                <DrawerContentBody>
+                    <Stack>
+                        <StackItem>
+                            <Flex>
+                                <FlexItem>
+                                    <Button variant="plain" onClick={() => setDrawerExpanded(!drawerExpanded)}>
+                                        <FontAwesomeIcon icon="fas fa-bars" />
+                                    </Button>
+                                </FlexItem>
+                                <Divider
+                                    orientation={{
+                                        default: 'vertical'
+                                    }}
+                                />
+                                <FlexItem>
+                                    <Breadcrumb style={{padding: '8px'}}>
+                                        {breadcrumbItem('/', '', pathList.length !== 0)}
+                                        {pathList.map((item, index) => {
+                                            return breadcrumbItem(item, pathList.slice(0, index + 1).join('/'), index !== pathList.length - 1);
+                                        })}
+                                    </Breadcrumb>
+                                </FlexItem>
+                            </Flex>
+                        </StackItem>
+                        <StackItem isFilled>
+                            <DirectoryView showHidden={view.showHidden} onlyDirectory={view.onlyDirectory}
+                                           onShowHiddenChange={(showHidden) => setView({...view, showHidden: showHidden})}
+                                           onDirectorySelect={(path) => setSelectedDirectory(path)}
+                                           selectedDirectory={selectedDirectory}/>
+                        </StackItem>
+                    </Stack>
+                </DrawerContentBody>
+            </DrawerContent>
+        </Drawer>
+    );
 }
 
 const DataLoadingErrorElement = memo((props) => <Alert {...props} className="nowrap" variant="danger" title="Error on loading data"></Alert>)
