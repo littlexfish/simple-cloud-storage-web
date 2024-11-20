@@ -1,8 +1,12 @@
-# React + Vite
+# SimpleCloudStorage(Web)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+SimpleCloudStorage is a simple cloud storage service that allows users to upload and download server's files.
 
-Currently, two official plugins are available:
+## Notice
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+This repository is the web interface of the service,
+full information about the service can be found [here](https://github.com/littlexfish/SimpleCloudStorage)
+
+## License
+
+GNU General Public License v3.0
