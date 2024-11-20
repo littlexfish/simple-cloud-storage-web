@@ -1,6 +1,6 @@
 
 function getUrl(pathWithQuery) {
-    let baseUrl = 'http://localhost:9000';
+    let baseUrl = import.meta.env.SCS_SERVER_URL || '';
     let afterBase = pathWithQuery;
     if (!pathWithQuery.startsWith('/')) {
         afterBase = '/' + pathWithQuery;
