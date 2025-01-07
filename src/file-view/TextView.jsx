@@ -1,53 +1,48 @@
-import React from "react";
+import {useState} from "react";
 import {bytesToHumanReadable, getUrl} from "../file.service.js";
 import {Panel, PanelMain, PanelMainBody, Stack, StackItem} from "@patternfly/react-core";
 import {DataLoadingErrorElement, Loading} from "../FileView.jsx";
+import {useComponentDidMount} from "../helper.jsx";
 
 
-export default class TextView extends React.Component {
-
-    constructor(props) {
-        super(props);
-        this.state = {
-            content: null,
-            isError: false,
-        }
-    }
-
-    componentDidMount() {
-        fetch(getUrl('/api/file/text?path=' + this.props.path))
+export default function TextView(props) {
+    /* hooks */
+    const [content, setContent] = useState(null);
+    const [isError, setIsError] = useState(false);
+    useComponentDidMount(() => {
+        fetch(getUrl('/api/file/text?path=' + props.path))
             .then(res => res.json())
             .catch(error => {
-                this.setState({content: null, isError: true});
+                setContent(null);
+                setIsError(true);
                 console.error('Error:', error);
             })
             .then(data => {
-                this.setState({content: data});
+                setContent(data);
             });
-    }
+    });
 
-    render() {
-        if (this.state.content === null) {
-            return this.state.isError ? <DataLoadingErrorElement /> : <Loading/>;
-        }
-        if (this.state.content.content.length === 0) {
-            return <span className="hint-text">Empty</span>
-        }
-        return <Stack>
-            <StackItem>
-                <Panel isScrollable>
-                    <PanelMain>
-                        <PanelMainBody><pre>{this.state.content.content}</pre></PanelMainBody>
-                    </PanelMain>
-                </Panel>
-            </StackItem>
-            {
-                this.state.content.truncate ?
-                    <StackItem>
-                        <span className="hint-text">Truncated (Total: {bytesToHumanReadable(this.state.content.size)})</span>
-                    </StackItem> :
-                    ''
-            }
-        </Stack>
+    /* render */
+    if (content === null) {
+        return isError ? <DataLoadingErrorElement /> : <Loading/>;
     }
+    if (content.content.length === 0) {
+        return <span className="hint-text">Empty</span>
+    }
+    return <Stack>
+        <StackItem>
+            <Panel isScrollable>
+                <PanelMain>
+                    <PanelMainBody><pre>{content.content}</pre></PanelMainBody>
+                </PanelMain>
+            </Panel>
+        </StackItem>
+        {
+            content.truncate ?
+                <StackItem>
+                    <span className="hint-text">Truncated (Total: {bytesToHumanReadable(content.size)})</span>
+                </StackItem> :
+                ''
+        }
+    </Stack>;
 }

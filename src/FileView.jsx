@@ -946,90 +946,94 @@ function FileUploadModal(props) {
 
 }
 
-class FileContentView extends React.Component {
-
-    constructor(props) {
-        super(props);
-        this.state = {
-            type: null,
-            viewable: true,
-            forceViewType: 'text',
-            forceViewDropdownOpen: false,
+function FileContentView(props) {
+    /* hooks */
+    const [type, setType] = useState(null);
+    const [viewable, setViewable] = useState(true);
+    const [forceViewType, setForceViewType] = useState('text');
+    const [forceViewDropdownOpen, setForceViewDropdownOpen] = useState(false);
+    const allViewType = [
+        {
+            value: 'text',
+            label: 'Text'
+        },
+        {
+            value: 'image',
+            label: 'Image'
+        },
+        {
+            value: 'zip',
+            label: 'Zip'
+        },
+        {
+            value: 'pdf',
+            label: 'PDF'
         }
-        this.allViewType = [
-            {
-                value: 'text',
-                label: 'Text'
-            },
-            {
-                value: 'image',
-                label: 'Image'
-            },
-            {
-                value: 'zip',
-                label: 'Zip'
-            },
-            {
-                value: 'pdf',
-                label: 'PDF'
-            }
-        ];
-    }
+    ];
+    // componentDidMount
+    useComponentDidMount(() => {
+        updateContent();
+    });
+    // componentDidUpdate
+    useComponentDidUpdate(props, (prevProps) => {
+        if (prevProps.path !== props.path) {
+            updateContent();
+        }
+    });
 
-    updateContent() {
-        fetch(getUrl('/api/file/type?path=' + this.props.path))
+    /* inner functions */
+    function updateContent() {
+        fetch(getUrl('/api/file/type?path=' + props.path))
             .then(res => res.json())
             .catch(error => {
-                this.setState({type: 'error', viewable: true});
+                setType('error');
+                setViewable(true);
                 console.error('Error:', error);
             })
             .then(data => {
-                this.setState({type: data.type.toLowerCase(), viewable: data.viewable});
+                setType(data.type.toLowerCase());
+                setViewable(data.viewable);
             });
     }
 
-    componentDidMount() {
-        this.updateContent();
-    }
-
-    componentDidUpdate(prevProps) {
-        if (prevProps.path !== this.props.path) {
-            this.updateContent();
-        }
-    }
-
-    getComponent() {
-        if (!this.state.viewable) {
+    function getComponent() {
+        if (!viewable) {
             return <Alert variant="warning" title="The preview for this file is not available.">
-                <Button variant="link" isInline onClick={() => this.setState({viewable: true, type: this.state.forceViewType})}>
+                <Button variant="link" isInline onClick={() => {
+                    setViewable(true);
+                    setType(forceViewType);
+                }}>
                     Force preview as
                 </Button>
                 {' '}
-                <Select isOpen={this.state.forceViewDropdownOpen} selected={this.state.forceViewType}
-                        onSelect={(evt , v) => {this.setState({forceViewType: v, forceViewDropdownOpen: false})}}
-                        onOpenChange={(isOpen) => this.setState({forceViewDropdownOpen: isOpen})}
-                        toggle={(t) => <MenuToggle ref={t} onClick={() => this.setState({forceViewDropdownOpen: !this.state.forceViewDropdownOpen})}
-                                                   isExpanded={this.state.forceViewDropdownOpen}>
-                            {this.allViewType.find(it => it.value === this.state.forceViewType)?.label}
+                <Select isOpen={forceViewDropdownOpen} selected={forceViewType}
+                        onSelect={(evt , v) => {
+                            setForceViewType(v);
+                            setForceViewDropdownOpen(false)
+                        }}
+                        onOpenChange={(isOpen) => setForceViewDropdownOpen(isOpen)}
+                        toggle={(t) => <MenuToggle ref={t} onClick={() => setForceViewDropdownOpen(old => !old)}
+                                                   isExpanded={forceViewDropdownOpen}>
+                            {allViewType.find(it => it.value === forceViewType)?.label}
                         </MenuToggle>} shouldFocusToggleOnSelect>
                     <SelectList>
-                        {this.allViewType.map(it => {
+                        {allViewType.map(it => {
                             return <SelectOption key={it.value} value={it.value}>{it.label}</SelectOption>
                         })}
                     </SelectList>
                 </Select>
             </Alert>;
         }
-        switch (this.state.type) {
+        switch (type) {
             case 'text':
             case 'unknown':
-                return <TextView path={this.props.path} />;
+                return <TextView path={props.path} />;
             case 'image':
-                return <ImageView path={this.props.path} />;
+                return <ImageView path={props.path} />;
             case 'zip':
-                return <ZipView path={this.props.path} />;
+                return <ZipView path={props.path} />;
             case 'pdf':
-                return <PdfView path={this.props.path} />;
+                return <PdfView path={props.path} />;
             case 'error':
                 return <DataLoadingErrorElement />;
             default:
@@ -1037,9 +1041,8 @@ class FileContentView extends React.Component {
         }
     }
 
-    render() {
-        return this.getComponent();
-    }
+    /* render */
+    return getComponent();
 }
 
 export default FileView;
