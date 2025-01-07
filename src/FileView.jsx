@@ -1,18 +1,23 @@
-import React, {memo, startTransition, useCallback, useState} from "react";
+import React, {memo, useEffect, useRef, useState} from "react";
 import {
     Alert,
     Breadcrumb,
     BreadcrumbItem,
-    Button, Checkbox,
+    Button,
     Divider,
-    Drawer, DrawerCloseButton,
+    Drawer,
+    DrawerCloseButton,
     DrawerContent,
     DrawerContentBody,
     DrawerHead,
     DrawerPanelContent,
     Dropdown,
     DropdownItem,
-    DropdownList, Flex, FlexItem, HelperText, HelperTextItem,
+    DropdownList,
+    Flex,
+    FlexItem,
+    HelperText,
+    HelperTextItem,
     List,
     ListItem,
     ListVariant,
@@ -34,11 +39,13 @@ import {
     Split,
     SplitItem,
     Stack,
-    StackItem, TextInput,
+    StackItem,
+    TextInput,
     Toolbar,
     ToolbarContent,
     ToolbarGroup,
-    ToolbarItem, Tooltip,
+    ToolbarItem,
+    Tooltip,
     TreeView
 } from "@patternfly/react-core";
 import {bytesToHumanReadable, getUrl, isFilenameValid} from "./file.service.js";
@@ -47,10 +54,10 @@ import TextView from "./file-view/TextView.jsx";
 import ZipView from "./file-view/ZipView.jsx";
 import PdfView from "./file-view/PdfView.jsx";
 import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
+import {useComponentDidMount, useComponentDidUpdate, useForceUpdate} from "./helper.jsx";
 
 function FileView(props) {
     /* hooks */
-
     const [selectedDirectory, setSelectedDirectory] = useState('');
     const [view, setView] = useState({
         onlyDirectory: false,
@@ -58,7 +65,8 @@ function FileView(props) {
     });
     const [drawerExpanded, setDrawerExpanded] = useState(false);
     const [windowWidth, setWindowWidth] = useState(window.innerWidth);
-    useCallback(() => { // only call once on mount
+    // componentDidMount
+    useEffect(() => { // only call once on mount
         window.addEventListener('resize', () => {
             setWindowWidth(window.innerWidth);
         });
@@ -68,7 +76,6 @@ function FileView(props) {
     }, []);
 
     /* inner functions */
-
     function breadcrumbItem(name, path, isActive) {
         if (!isActive) {
             return <BreadcrumbItem key={path}>
@@ -80,6 +87,7 @@ function FileView(props) {
         </BreadcrumbItem>
     }
 
+    /* render */
     const pathList = selectedDirectory ? selectedDirectory.split('/') : [];
     return (
         <Drawer className="file-view" style={{height: '100vh'}} isExpanded={drawerExpanded}
@@ -96,7 +104,8 @@ function FileView(props) {
                         <StackItem>
                             <Flex>
                                 <FlexItem>
-                                    <Button variant="plain" onClick={() => setDrawerExpanded(!drawerExpanded)}>
+                                    <Button variant="plain" onFocus={(evt) => evt.target.blur()}
+                                            onClick={() => setDrawerExpanded(!drawerExpanded)}>
                                         <FontAwesomeIcon icon="fas fa-bars" />
                                     </Button>
                                 </FlexItem>
@@ -131,20 +140,16 @@ function FileView(props) {
 const DataLoadingErrorElement = memo((props) => <Alert {...props} className="nowrap" variant="danger" title="Error on loading data"></Alert>)
 const Loading = memo((props) => <span><Spinner isInline={true} {...props} /> Loading...</span>)
 
-class FileTree extends React.Component {
-
-    constructor(props) {
-        super(props);
-        this.state = {
-            data: [{
-                id: '<root>',
-                name: <Loading />,
-            }],
-            selected: [],
-        };
-    }
-
-    componentDidMount() {
+function FileTree(props) {
+    /* hooks */
+    const [data, setData] = useState([{
+        id: '<root>',
+        name: <Loading />,
+    }]);
+    const [selected, setSelected] = useState([]);
+    const forceUpdate = useForceUpdate();
+    // componentDidMount
+    useComponentDidMount(() => {
         // get root directories
         fetch(getUrl('/api/directory'))
             .then(response => response.json())
@@ -153,25 +158,27 @@ class FileTree extends React.Component {
             })
             .then(data => {
                 if(data) {
-                    this.setState({data: this.apiDataToTreeData(data)});
+                    setData(apiDataToTreeData(data))
                 }
                 else {
-                    this.setState({data: [
-                        {
-                            id: '<root>',
-                            name: <DataLoadingErrorElement />
-                        }
-                    ]});
+                    setData([{
+                        id: '<root>',
+                        name: <DataLoadingErrorElement />
+                    }]);
                 }
-        });
-    }
+            });
+    })
+    useEffect(() => {
+        if (selected.length > 0) scrollToItem(selected[0], selected[0]);
+    }, [selected]);
 
-    apiDataToTreeData(apiData) {
+    /* inner functions */
+    function apiDataToTreeData(apiData) {
         const idPrefix = apiData.path === '' ? '' : apiData.path + '/';
         return apiData.files.map((item) => {
             return {
                 id: idPrefix + item.name,
-                name: this.getNameFromApiDataItem(item),
+                name: getNameFromApiDataItem(item),
                 icon: item.isDirectory ? <FontAwesomeIcon icon="fas fa-folder" /> : <FontAwesomeIcon icon="fas fa-file" />,
                 expandedIcon: item.isDirectory ? <FontAwesomeIcon icon="fas fa-folder-open" /> : <FontAwesomeIcon icon="fas fa-file" />,
                 children: item.isDirectory ? [] : null,
@@ -182,35 +189,35 @@ class FileTree extends React.Component {
         });
     }
 
-    getNameFromApiDataItem(apiDataItem) {
+    function getNameFromApiDataItem(apiDataItem) {
         return <span className={apiDataItem.isHidden ? 'hidden' : ''} style={{textWrap: 'nowrap'}}>{apiDataItem.name}</span>;
     }
 
-    filterTreeData(treeData) {
+    function filterTreeData(treeData) {
         let ret = treeData
-        if (this.props.onlyDirectory || false) {
+        if (props.onlyDirectory) {
             ret = ret.filter(it => it.id === '<root>' || it.isDirectory);
         }
-        if (!(this.props.showHidden || false)) {
+        if (!props.showHidden) {
             ret = ret.filter(it => it.id === '<root>' || !it.isHidden);
         }
         return ret;
     }
 
-    injectRefItemAndCopy(item) {
+    function injectRefItemAndCopy(item) {
         return {...item, ref: item};
     }
 
-    filterTree(data) {
+    function filterTree(data) {
         if (data.id === '<root>' || !data.isDirectory || !Array.isArray(data.children)) return;
-        data.children = data.children.map(it => this.injectRefItemAndCopy(it));
-        data.children = this.filterTreeData(data.children);
+        data.children = data.children.map(it => injectRefItemAndCopy(it));
+        data.children = filterTreeData(data.children);
         data.children.forEach(it => {
-            this.filterTree(it);
+            filterTree(it);
         });
     }
 
-    onTreeExpend(evt, item, parent) {
+    function onTreeExpend(evt, item, parent) {
         const ref = item.ref !== undefined ? item.ref : item;
         const hasAnyChild = ref.children.length > 0;
         if (!hasAnyChild) {
@@ -220,45 +227,43 @@ class FileTree extends React.Component {
                     name: <span><Spinner isInline={true}/> Loading...</span>
                 }
             ];
-            this.forceUpdate();
+            forceUpdate();
         }
         fetch(getUrl('/api/directory?path=' + ref.id))
             .catch(error => {
                 console.error('Error:', error);
             })
             .then(response => response.json()).then(data => {
-                const treeData = this.apiDataToTreeData(data);
-                const idExists = ref.children
-                    .map(it => it.id)
-                    .filter(it => !it.endsWith('<loading>'));
-                if (idExists.length === 0) {
-                    ref.children = treeData;
-                }
-                else {
-                    const newId = treeData.map(it => it.id);
-                    const needAdd = treeData.filter(it => !idExists.includes(it.id));
-                    let children = ref.children.filter(it => newId.includes(it.id));
-                    children.push(...needAdd);
-                    ref.children = children;
-                }
-                this.forceUpdate(() => {
-                    const vScrollToItem = ref.children.length > 0 ? ref.children[0] : ref;
-                    const hScrollToItem = ref.children.length > 0 ? ref.children.reduce((p, c) => p.id.length > c.id.length ? p : c, {id: ''}) : ref;
-                    this.scrollToItem(vScrollToItem, hScrollToItem);
-                });
+            const treeData = apiDataToTreeData(data);
+            const idExists = ref.children
+                .map(it => it.id)
+                .filter(it => !it.endsWith('<loading>'));
+            if (idExists.length === 0) {
+                ref.children = treeData;
+            }
+            else {
+                const newId = treeData.map(it => it.id);
+                const needAdd = treeData.filter(it => !idExists.includes(it.id));
+                let children = ref.children.filter(it => newId.includes(it.id));
+                children.push(...needAdd);
+                ref.children = children;
+            }
+            forceUpdate(() => {
+                const vScrollToItem = ref.children.length > 0 ? ref.children[0] : ref;
+                const hScrollToItem = ref.children.length > 0 ? ref.children.reduce((p, c) => p.id.length > c.id.length ? p : c, {id: ''}) : ref;
+                scrollToItem(vScrollToItem, hScrollToItem);
+            });
         });
     }
 
-    onNodeSelect(evt, item, parent) {
+    function onNodeSelect(evt, item, parent) {
         const ref = item.ref !== undefined ? item.ref : item;
-        this.setState({selected: [ref]}, () => {
-            this.scrollToItem(ref, ref);
-        });
+        setSelected([ref]);
         const selectId = Array.isArray(ref.children) ? ref.id : parent ? parent.id : '';
-        this.props.onDirectorySelect && this.props.onDirectorySelect(selectId);
+        props.onDirectorySelect && props.onDirectorySelect(selectId);
     }
 
-    scrollToItem(vItem, hItem) {
+    function scrollToItem(vItem, hItem) {
         if (!vItem || !hItem) return;
 
         const scrollView = document.getElementsByClassName('pf-v6-c-drawer__panel-main')[0];
@@ -286,89 +291,95 @@ class FileTree extends React.Component {
         });
     }
 
-    render() {
-        const renderTree = {
-            id: '',
-            children: this.state.data,
-            // additional data
-            isDirectory: true,
-            isHidden: false,
-        }
-        this.filterTree(renderTree);
-        return (
-            <TreeView data={renderTree.children}
-                      hasGuides={true}
-                      useMemo={true}
-                      activeItems={this.state.selected}
-                      onExpand={this.onTreeExpend.bind(this)}
-                      onSelect={this.onNodeSelect.bind(this)} />
-        );
+    /* render */
+    const renderTree = {
+        id: '',
+        children: data,
+        // additional data
+        isDirectory: true,
+        isHidden: false,
     }
+    filterTree(renderTree);
+    return (
+        <TreeView data={renderTree.children}
+                  hasGuides={true}
+                  useMemo={true}
+                  activeItems={selected}
+                  onExpand={onTreeExpend.bind(this)}
+                  onSelect={onNodeSelect.bind(this)} />
+    );
 }
 
-class DirectoryView extends React.Component {
-
-    constructor(props) {
-        super(props);
-        this.state = {
-            openedFile: null,
-            files: [],
-            isLoading: true,
-            isError: false,
-            menu: {
-                popup: false,
-                x: 0,
-                y: 0,
-            },
-            uploadModalOpen: false,
-            deleteModalOpen: false,
-            nameModal: {
-                open: false,
-                title: '',
-                placeholder: '',
-                content: '',
-                confirmText: '',
-                onConfirm: () => {},
-            },
-            renameModalOpen: false,
-            renameModalContent: '',
+function DirectoryView(props) {
+    /* hooks */
+    const [openedFile, setOpenedFile] = useState(null);
+    // const [files, setFiles] = useState([]);
+    const files = useRef([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isError, setIsError] = useState(false);
+    const [menu, setMenu] = useState({
+        popup: false,
+        x: 0,
+        y: 0,
+    });
+    const [uploadModalOpen, setUploadModalOpen] = useState(false);
+    const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+    const [nameModal, setNameModal] = useState({
+        open: false,
+        title: '',
+        placeholder: '',
+        content: '',
+        confirmText: '',
+        onConfirm: () => {},
+    });
+    const [renameModalOpen, setRenameModalOpen] = useState(false);
+    const [renameModalContent, setRenameModalContent] = useState('');
+    const forceUpdate = useForceUpdate();
+    useComponentDidMount(() => {
+        getFiles();
+    });
+    useComponentDidUpdate(props, (prevProps) => {
+        if (prevProps.selectedDirectory !== props.selectedDirectory) {
+            setIsLoading(true);
+            getFiles()
         }
-    }
+    });
 
-    getFiles() {
-        fetch(getUrl('/api/directory?path=' + (this.props.selectedDirectory || '')))
+    /* inner functions */
+
+    function getFiles() {
+        fetch(getUrl('/api/directory?path=' + (props.selectedDirectory || '')))
             .then(response => response.json())
             .catch(error => {
                 console.error('Error:', error);
-                this.setState({isError: true, isLoading: false});
+                setIsError(true);
+                setIsLoading(false);
             })
             .then(data => {
-                const files = this.apiDataToFiles(data);
-                this.setState({isLoading: false, isError: false, files: files});
+                files.current = apiDataToFiles(data);
+                setIsLoading(false);
+                setIsError(false);
             });
     }
 
-    reload() {
-        this.setState({isLoading: true, isError: false});
-        this.getFiles()
+    function reload() {
+        setIsLoading(true);
+        setIsError(false);
+        getFiles();
     }
 
-    componentDidMount() {
-        this.getFiles();
-    }
-
-    filterFiles(apiData) {
+    function filterFiles(apiData) {
         let ret = apiData
-        if (this.props.onlyDirectory || false) {
+        if (props.onlyDirectory) {
             ret = ret.filter(it => it.isDirectory);
         }
-        if (!(this.props.showHidden || false)) {
+        if (!props.showHidden) {
             ret = ret.filter(it => !it.isHidden);
         }
         return ret;
     }
 
-    apiDataToFiles(apiData) {
+    function apiDataToFiles(apiData) {
         const pathPrefix = apiData.path === '' ? '' : apiData.path + '/';
         return apiData.files.map((item) => {
             return {
@@ -382,7 +393,7 @@ class DirectoryView extends React.Component {
         });
     }
 
-    buildNameLabel(item) {
+    function buildNameLabel(item) {
         let classList = [];
         if (item.isHidden) {
             classList.push('hidden');
@@ -390,54 +401,54 @@ class DirectoryView extends React.Component {
         return <span className={classList.join(' ')}>{item.name}</span>;
     }
 
-    onNewPath(path) {
-        this.props.onDirectorySelect && this.props.onDirectorySelect(path);
+    function onNewPath(path) {
+        props.onDirectorySelect && props.onDirectorySelect(path);
     }
 
-    onOpenFile(path) {
-        this.unSelectAll();
-        this.setState({openedFile: path});
+    function onOpenFile(path) {
+        unSelectAll();
+        setOpenedFile(path);
     }
 
-    tryOpenItem(item) {
+    function tryOpenItem(item) {
         if (item.isDirectory) {
-            this.onNewPath(item.path);
+            onNewPath(item.path);
         }
         else {
-            this.onOpenFile(item.path);
+            onOpenFile(item.path);
         }
     }
 
-    unSelectAll() {
-        this.state.files.forEach(it => it.isSelected = false);
-        this.forceUpdate();
+    function unSelectAll() {
+        files.current.forEach(it => it.isSelected = false);
+        forceUpdate();
     }
 
-    selectItem(item, ctrl, shift) {
+    function selectItem(item, ctrl, shift) {
         if (ctrl || shift) {
             item.isSelected = !item.isSelected;
         }
         else {
-            this.unSelectAll();
+            unSelectAll();
             item.isSelected = true;
         }
-        this.forceUpdate();
+        forceUpdate();
     }
 
-    buildSimpleListItem(item) {
+    function buildSimpleListItem(item) {
         return <SimpleListItem key={item.path}
                                className={item.isSelected ? 'selected' : ''}
                                itemId={item.path}
-                               onDoubleClick={this.tryOpenItem.bind(this, item)}
+                               onDoubleClick={tryOpenItem.bind(this, item)}
                                isActive={item.isSelected}
-                               onContextMenu={(evt) => this.selectItem(item, evt.ctrlKey, evt.shiftKey)}
-                               onClick={(evt) => this.selectItem(item, evt.ctrlKey, evt.shiftKey)}>
+                               onContextMenu={(evt) => selectItem(item, evt.ctrlKey, evt.shiftKey)}
+                               onClick={(evt) => selectItem(item, evt.ctrlKey, evt.shiftKey)}>
             <Split hasGutter>
                 <SplitItem>
                     {item.isDirectory ? <FontAwesomeIcon icon="fas fa-folder" /> : <FontAwesomeIcon icon="fas fa-file" />}
                 </SplitItem>
                 <SplitItem isFilled>
-                    {this.buildNameLabel(item)}
+                    {buildNameLabel(item)}
                 </SplitItem>
                 <SplitItem>
                     {item.isDirectory ? '' : bytesToHumanReadable(item.size)}
@@ -446,20 +457,13 @@ class DirectoryView extends React.Component {
         </SimpleListItem>
     }
 
-    componentDidUpdate(prevProps) {
-        if (prevProps.selectedDirectory !== this.props.selectedDirectory) {
-            this.setState({isLoading: true});
-            this.getFiles();
-        }
-    }
-
-    getFilename(path) {
+    function getFilename(path) {
         const idx = path.lastIndexOf('/')
         return idx === -1 ? path : path.slice(idx + 1)
     }
 
-    download(files) {
-        files.forEach(file => {
+    function download(f) {
+        f.forEach(file => {
             fetch(getUrl('/api/file/download?path=' + file))
                 .then(res => res.blob())
                 .then(blob => {
@@ -467,7 +471,7 @@ class DirectoryView extends React.Component {
                     const a = document.createElement('a');
                     a.href = url;
                     // a.target = '_blank';
-                    a.download = this.getFilename(file);
+                    a.download = getFilename(file);
                     document.body.appendChild(a);
                     a.click();
                     window.URL.revokeObjectURL(url);
@@ -476,121 +480,121 @@ class DirectoryView extends React.Component {
         })
     }
 
-    getSelectedFiles() {
-        return this.state.files.filter(it => it.isSelected);
+    function getSelectedFiles() {
+        return files.current.filter(it => it.isSelected);
     }
 
-    setContextOpen(isOpen) {
-        this.setState({menu: {...this.state.menu, popup: isOpen}});
+    function setContextOpen(isOpen) {
+        setMenu(old => ({...old, popup: isOpen}));
     }
 
-    contextToggle(ref) {
-        return <div ref={ref} style={{position: 'absolute', top: this.state.menu.y, left: this.state.menu.x}}></div>
+    function contextToggle(ref) {
+        return <div ref={ref} style={{position: 'absolute', top: menu.y, left: menu.x}}></div>
     }
 
-    onContextMenu(evt) {
+    function onContextMenu(evt) {
         evt.preventDefault();
-        this.setContextOpen(false); // force close dropdown
+        setContextOpen(false); // force close dropdown
         setTimeout(() => {
-            this.setState({menu: {x: evt.clientX, y: evt.clientY, popup: true}});
+            setMenu({x: evt.clientX, y: evt.clientY, popup: true});
         }, 10); // reopen dropdown
     }
 
-    closeNameModal() {
-        this.setState({nameModal: {...this.state.nameModal, open: false}});
+    function closeNameModal() {
+        setNameModal(old => ({...old, open: false}));
     }
 
-    rename(name, newName) {
-        const selected = this.getSelectedFiles()[0].path;
+    function rename(name, newName) {
+        const selected = getSelectedFiles()[0].path;
         fetch(getUrl('/api/file/rename?path=' + selected), {
             method: 'PUT',
             body: newName
         })
             .then(res => res.json())
-            .then(data => this.reload())
+            .then(data => reload())
             .catch(err => {
                 console.error(err);
             });
     }
 
-    delete(rec) {
-        const selected = this.getSelectedFiles();
+    function deleteFile(rec) {
+        const selected = getSelectedFiles();
         Promise.all(selected.map(it => {
             return fetch(getUrl('/api/file/delete?path=' + it.path + '&recursive=' + rec), {
                 method: 'DELETE'
             })
         }))
             .then(res => Promise.all(res.map(it => it.json())))
-            .then(data => this.reload())
+            .then(data => reload())
             .catch(err => {
                 console.error(err);
             });
-        this.setState({deleteModalOpen: false});
+        setDeleteModalOpen(false);
     }
 
-    openRenameModal() {
-        const oldName = this.getSelectedFiles()[0].name;
-        this.setState({nameModal: {open: true, title: 'Rename',
-                confirmText: 'Rename', placeholder: oldName,
-                content: oldName, onConfirm: () => {
-                    this.rename(oldName, this.state.nameModal.content);
-                    this.closeNameModal();
-                }}});
+    function openRenameModal() {
+        const oldName = getSelectedFiles()[0].name;
+        setNameModal(old => ({open: true, title: 'Rename',
+            confirmText: 'Rename', placeholder: oldName,
+            content: oldName, onConfirm: () => {
+                rename(oldName, old.content);
+                closeNameModal();
+            }}));
     }
 
-    createDir(name) {
-        fetch(getUrl('/api/directory/create?path=' + this.props.selectedDirectory + '/' + name), {
+    function createDir(name) {
+        fetch(getUrl('/api/directory/create?path=' + props.selectedDirectory + '/' + name), {
             method: 'POST'
         })
             .then(res => res.json())
-            .then(data => this.reload())
+            .then(data => reload())
             .catch(err => {
                 console.error(err);
             });
     }
 
-    openCreateDirModal() {
-        this.setState({nameModal: {open: true, title: 'Create Directory',
-                confirmText: 'Create', placeholder: '<new>',
-                content: 'New Directory', onConfirm: () => {
-                    this.createDir(this.state.nameModal.content);
-                    this.closeNameModal();
-                }}})
+    function openCreateDirModal() {
+        setNameModal(old => ({open: true, title: 'Create Directory',
+            confirmText: 'Create', placeholder: '<new>',
+            content: 'New Directory', onConfirm: () => {
+                createDir(old.content);
+                closeNameModal();
+            }}));
     }
 
-    getDropdownItems(selectedFiles) {
+    function getDropdownItems(selectedFiles) {
         const hasSelectedFiles = selectedFiles.length > 0;
         const hasMultiSelectedFiles = selectedFiles.length > 1;
         const onlyOneSelectedFile = selectedFiles.length === 1;
         return <>
-            <DropdownItem icon={<FontAwesomeIcon icon="fas fa-upload" />} onClick={() => this.setState({uploadModalOpen: true})}>Upload</DropdownItem>
-            <DropdownItem icon={<FontAwesomeIcon icon="fas fa-folder-plus" />} onClick={() => this.openCreateDirModal()}>New Directory</DropdownItem>
+            <DropdownItem icon={<FontAwesomeIcon icon="fas fa-upload" />} onClick={() => setUploadModalOpen(true)}>Upload</DropdownItem>
+            <DropdownItem icon={<FontAwesomeIcon icon="fas fa-folder-plus" />} onClick={() => openCreateDirModal()}>New Directory</DropdownItem>
             {onlyOneSelectedFile && <>
                 <Divider component="li" key="separator" />
-                <DropdownItem icon={<FontAwesomeIcon icon="fas fa-pen-to-square" />} onClick={() => this.openRenameModal()}>Rename</DropdownItem>
+                <DropdownItem icon={<FontAwesomeIcon icon="fas fa-pen-to-square" />} onClick={() => openRenameModal()}>Rename</DropdownItem>
             </>}
             {hasSelectedFiles && <>
                 <Divider component="li" key="separator" />
                 <DropdownItem icon={<FontAwesomeIcon icon="fas fa-arrow-up-right-from-square" />}
-                              onClick={this.tryOpenItem.bind(this, selectedFiles[0])}>Open{hasMultiSelectedFiles && ' First File/Directory'}</DropdownItem>
+                              onClick={tryOpenItem.bind(this, selectedFiles[0])}>Open{hasMultiSelectedFiles && ' First File/Directory'}</DropdownItem>
                 <DropdownItem icon={<FontAwesomeIcon icon="fas fa-download" />}
-                              onClick={() => this.download(selectedFiles.filter(it => !it.isDirectory).map(it => it.path))}>Download</DropdownItem>
+                              onClick={() => download(selectedFiles.filter(it => !it.isDirectory).map(it => it.path))}>Download</DropdownItem>
                 <DropdownItem icon={<FontAwesomeIcon icon="fas fa-trash" />} isDanger
-                              onClick={() => this.setState({deleteModalOpen: true})}>Delete</DropdownItem>
+                              onClick={() => setDeleteModalOpen(true)}>Delete</DropdownItem>
             </>}
         </>
     }
 
-    getToolbarItems(selectedFiles) {
+    function getToolbarItems(selectedFiles) {
         const hasSelectedFiles = selectedFiles.length > 0;
         const hasMultiSelectedFiles = selectedFiles.length > 1;
         const onlyOneSelectedFile = selectedFiles.length === 1;
         return <>
             <ToolbarGroup alignSelf="center">
                 <ToolbarItem variant="label" alignItems="center">
-                    <Tooltip content={<>{this.props.showHidden ? 'Hide' : 'Show'} Hidden Files</>}>
-                        <Button variant="link" onClick={() => (this.props.onShowHiddenChange || (() => {}))(!this.props.showHidden)}>
-                            {this.props.showHidden ? <FontAwesomeIcon icon="fas fa-eye-slash" /> : <FontAwesomeIcon icon="fas fa-eye" />}
+                    <Tooltip content={<>{props.showHidden ? 'Hide' : 'Show'} Hidden Files</>}>
+                        <Button variant="link" onClick={() => (props.onShowHiddenChange || (() => {}))(!props.showHidden)}>
+                            {props.showHidden ? <FontAwesomeIcon icon="fas fa-eye-slash" /> : <FontAwesomeIcon icon="fas fa-eye" />}
                         </Button>
                     </Tooltip>
                 </ToolbarItem>
@@ -605,33 +609,33 @@ class DirectoryView extends React.Component {
             <ToolbarGroup visibility={{default: hasSelectedFiles ? "visible" : "hidden"}}>
                 <ToolbarItem>
                     <Tooltip content={<>Open{hasMultiSelectedFiles && ' First File/Directory'}</>}>
-                        <Button variant="link" onClick={this.tryOpenItem.bind(this, selectedFiles[0])}>
+                        <Button variant="link" onClick={tryOpenItem.bind(this, selectedFiles[0])}>
                             <FontAwesomeIcon icon="fas fa-arrow-up-right-from-square" />
                         </Button>
                     </Tooltip>
                 </ToolbarItem>
                 <ToolbarItem visibility={{default: hasSelectedFiles ? "visible" : "hidden"}}>
                     <Tooltip content="Download">
-                        <Button variant="link" onClick={() => this.download(selectedFiles.filter(it => !it.isDirectory).map(it => it.path))}>
+                        <Button variant="link" onClick={() => download(selectedFiles.filter(it => !it.isDirectory).map(it => it.path))}>
                             <FontAwesomeIcon icon="fas fa-download" />
                         </Button>
                     </Tooltip>
                 </ToolbarItem>
                 <ToolbarItem>
                     <Tooltip content="Delete">
-                        <Button variant="link" isDanger onClick={() => this.setState({deleteModalOpen: true})}>
+                        <Button variant="link" isDanger onClick={() => setDeleteModalOpen(true)}>
                             <FontAwesomeIcon icon="fas fa-trash" />
                         </Button>
                     </Tooltip>
                 </ToolbarItem>
                 <ToolbarItem visibility={{default: onlyOneSelectedFile ? "visible" : "hidden"}}>
                     <Tooltip content="Rename">
-                        <Button variant="link" onClick={() => this.openRenameModal()}><FontAwesomeIcon icon="fas fa-pen-to-square" /></Button>
+                        <Button variant="link" onClick={() => openRenameModal()}><FontAwesomeIcon icon="fas fa-pen-to-square" /></Button>
                     </Tooltip>
                 </ToolbarItem>
                 <ToolbarItem visibility={{default: hasMultiSelectedFiles ? "visible" : "hidden"}}>
                     <Tooltip content="Unselect All">
-                        <Button variant="link" onClick={this.unSelectAll.bind(this)}><FontAwesomeIcon icon="fas fa-ban" /></Button>
+                        <Button variant="link" onClick={unSelectAll.bind(this)}><FontAwesomeIcon icon="fas fa-ban" /></Button>
                     </Tooltip>
                 </ToolbarItem>
             </ToolbarGroup>
@@ -639,182 +643,174 @@ class DirectoryView extends React.Component {
             <ToolbarGroup>
                 <ToolbarItem>
                     <Tooltip content="New Directory">
-                        <Button variant="link" onClick={() => this.openCreateDirModal()}><FontAwesomeIcon icon="fas fa-folder-plus" /></Button>
+                        <Button variant="link" onClick={() => openCreateDirModal()}><FontAwesomeIcon icon="fas fa-folder-plus" /></Button>
                     </Tooltip>
                     <Tooltip content="Upload">
-                        <Button variant="link" onClick={() => this.setState({uploadModalOpen: true})}><FontAwesomeIcon icon="fas fa-upload" /></Button>
+                        <Button variant="link" onClick={() => setUploadModalOpen(true)}><FontAwesomeIcon icon="fas fa-upload" /></Button>
                     </Tooltip>
                 </ToolbarItem>
             </ToolbarGroup>
         </>
     }
 
-    render() {
-        const selectedFiles = this.getSelectedFiles();
-        const closeUploadModal = () => this.setState({uploadModalOpen: false});
-        const closeDeleteModal = () => this.setState({deleteModalOpen: false});
-        const showContent = this.filterFiles(this.state.files)
-        return (
-            <Stack className="directory-view">
-                <StackItem>
-                    <Toolbar inset={{default: 'insetMd'}} colorVariant="primary" isSticky={true}>
-                        <ToolbarContent alignItems="center">{this.getToolbarItems(selectedFiles)}</ToolbarContent>
-                    </Toolbar>
-                </StackItem>
-                <StackItem isFilled onContextMenu={this.onContextMenu.bind(this)} style={{overflow: 'auto'}}>
-                    {
-                        this.state.isLoading ? <Loading /> :
-                            this.state.isError ? <DataLoadingErrorElement /> :
-                                showContent.length > 0 ?
-                                    <SimpleList isControlled={false}>
-                                        {showContent.map(this.buildSimpleListItem.bind(this))}
-                                    </SimpleList> :
-                                    ''
-                    }
-                </StackItem>
-                <Dropdown isOpen={this.state.menu.popup}
-                          onSelect={this.setContextOpen.bind(this, false)}
-                          onOpenChange={this.setContextOpen.bind(this)}
-                          toggle={this.contextToggle.bind(this)}
-                          popperProps={{preventOverflow: true}}>
-                    <DropdownList>
-                        {this.getDropdownItems(selectedFiles)}
-                    </DropdownList>
-                </Dropdown>
-                <Modal variant="medium"
-                       disableFocusTrap
-                       isOpen={this.state.openedFile !== null}
-                       onEscapePress={this.onOpenFile.bind(this, null)}
-                       onClose={this.onOpenFile.bind(this, null)}>
-                    <ModalHeader title={this.getFilename(this.state.openedFile || '')} />
-                    <ModalBody>
-                        <FileContentView path={this.state.openedFile} />
-                    </ModalBody>
-                    <ModalFooter style={{justifyContent: 'end'}}>
-                        <Button variant="link" onClick={() => this.download([this.state.openedFile])}>Download</Button>
-                    </ModalFooter>
-                </Modal>
-                <FileUploadModal path={this.props.selectedDirectory} onUploadReload={() => this.reload()}
-                                 isOpen={this.state.uploadModalOpen} onClose={closeUploadModal} />
-                <Modal variant="medium"
-                       disableFocusTrap
-                       isOpen={this.state.deleteModalOpen}
-                       onEscapePress={closeDeleteModal}>
-                    <ModalHeader titleIconVariant="danger" title="Are you sure you want to delete the followings files?"/>
-                    <ModalBody>
-                        <List variant={ListVariant.inline} style={{padding: '0 8px'}}>
-                            {selectedFiles.map(it => {
-                                return <ListItem key={it.name}
-                                                 icon={it.isDirectory ? <FontAwesomeIcon icon="fas fa-folder" /> : <FontAwesomeIcon icon="fas fa-file" />}>
-                                    {this.buildNameLabel(it)}
-                                </ListItem>
-                            })}
-                        </List>
-                    </ModalBody>
-                    <ModalFooter style={{justifyContent: 'end'}}>
-                        <Button variant="link" onClick={closeDeleteModal}>Cancel</Button>
-                        <Button variant="link" isDanger onDoubleClick={() => this.delete(true)}>Delete Recursively(Double Click)</Button>
-                        <Button variant="link" isDanger onDoubleClick={() => this.delete(false)}>Delete(Double Click)</Button>
-                    </ModalFooter>
-                </Modal>
-                <NameModal isOpen={this.state.nameModal.open} title={this.state.nameModal.title} placeholder={this.state.nameModal.placeholder}
-                           content={this.state.nameModal.content} confirmText={this.state.nameModal.confirmText}
-                           onCancel={this.closeNameModal.bind(this)} onConfirm={this.state.nameModal.onConfirm}
-                           onChangeContent={(content) => this.setState({nameModal: {...this.state.nameModal, content: content}})} />
-            </Stack>
-        );
-    }
+    /* render */
+    const selectedFiles = getSelectedFiles();
+    const closeUploadModal = () => setUploadModalOpen(false);
+    const closeDeleteModal = () => setDeleteModalOpen(false);
+    const showContent = filterFiles(files.current)
+    return (
+        <Stack className="directory-view">
+            <StackItem>
+                <Toolbar inset={{default: 'insetMd'}} colorVariant="primary" isSticky={true}>
+                    <ToolbarContent alignItems="center">{getToolbarItems(selectedFiles)}</ToolbarContent>
+                </Toolbar>
+            </StackItem>
+            <StackItem isFilled onContextMenu={onContextMenu.bind(this)} style={{overflow: 'auto'}}>
+                {
+                    isLoading ? <Loading /> :
+                        isError ? <DataLoadingErrorElement /> :
+                            showContent.length > 0 ?
+                                <SimpleList isControlled={false}>
+                                    {showContent.map(buildSimpleListItem.bind(this))}
+                                </SimpleList> :
+                                ''
+                }
+            </StackItem>
+            <Dropdown isOpen={menu.popup}
+                      onSelect={setContextOpen.bind(this, false)}
+                      onOpenChange={setContextOpen.bind(this)}
+                      toggle={contextToggle.bind(this)}
+                      popperProps={{preventOverflow: true}}>
+                <DropdownList>
+                    {getDropdownItems(selectedFiles)}
+                </DropdownList>
+            </Dropdown>
+            <Modal variant="medium"
+                   disableFocusTrap
+                   isOpen={openedFile !== null}
+                   onEscapePress={onOpenFile.bind(this, null)}
+                   onClose={onOpenFile.bind(this, null)}>
+                <ModalHeader title={getFilename(openedFile || '')} />
+                <ModalBody>
+                    <FileContentView path={openedFile} />
+                </ModalBody>
+                <ModalFooter style={{justifyContent: 'end'}}>
+                    <Button variant="link" onClick={() => download([openedFile])}>Download</Button>
+                </ModalFooter>
+            </Modal>
+            <FileUploadModal path={props.selectedDirectory} onUploadReload={() => reload()}
+                             isOpen={uploadModalOpen} onClose={closeUploadModal} />
+            <Modal variant="medium"
+                   disableFocusTrap
+                   isOpen={deleteModalOpen}
+                   onEscapePress={closeDeleteModal}>
+                <ModalHeader titleIconVariant="danger" title="Are you sure you want to delete the followings files?"/>
+                <ModalBody>
+                    <List variant={ListVariant.inline} style={{padding: '0 8px'}}>
+                        {selectedFiles.map(it => {
+                            return <ListItem key={it.name}
+                                             icon={it.isDirectory ? <FontAwesomeIcon icon="fas fa-folder" /> : <FontAwesomeIcon icon="fas fa-file" />}>
+                                {buildNameLabel(it)}
+                            </ListItem>
+                        })}
+                    </List>
+                </ModalBody>
+                <ModalFooter style={{justifyContent: 'end'}}>
+                    <Button variant="link" onClick={closeDeleteModal}>Cancel</Button>
+                    <Button variant="link" isDanger onDoubleClick={() => deleteFile(true)}>Delete Recursively(Double Click)</Button>
+                    <Button variant="link" isDanger onDoubleClick={() => deleteFile(false)}>Delete(Double Click)</Button>
+                </ModalFooter>
+            </Modal>
+            <NameModal isOpen={nameModal.open} title={nameModal.title} placeholder={nameModal.placeholder}
+                       content={nameModal.content} confirmText={nameModal.confirmText}
+                       onCancel={closeNameModal.bind(this)} onConfirm={nameModal.onConfirm}
+                       onChangeContent={(content) => setNameModal(old => ({...old, content: content}))} />
+        </Stack>
+    );
+
 }
 
-class NameModal extends React.Component {
-
-    constructor(props) {
-        super(props);
-    }
-
-    render() {
-        const onCancel = this.props.onCancel || (() => {})
-        const valid = isFilenameValid(this.props.content)
-        return <Modal variant="small"
-                      disableFocusTrap
-                      isOpen={this.props.isOpen || false}
-                      onEscapePress={onCancel}
-                      onClose={onCancel}>
-            <ModalHeader title={this.props.title || ""} />
-            <ModalBody>
-                <TextInput placeholder={this.props.placeholder} value={this.props.content} type="text"
-                           validated={valid ? 'success' : 'error'}
-                           onChange={(evt, value) => (this.props.onChangeContent || (() => {}))(value)}/>
-                <HelperText>
-                    {!valid && <HelperTextItem variant="error">
-                        Filename is invalid<br />
-                        <List>
-                            <ListItem>Must not be empty</ListItem>
-                            <ListItem>Must not be . or ..</ListItem>
-                            <ListItem>Must not contain / \ * : &lt; &gt; ? &#34; |</ListItem>
-                            <ListItem>Must not have a space at the beginning or end</ListItem>
-                        </List>
-                    </HelperTextItem>}
-                </HelperText>
-            </ModalBody>
-            <ModalFooter style={{justifyContent: 'end'}}>
-                <Button variant="link" isDisabled={!valid} onClick={this.props.onConfirm || (() => {})}>
-                    {this.props.confirmText || "Confirm"}
-                </Button>
-            </ModalFooter>
-        </Modal>
-    }
+function NameModal(props) {
+    const onCancel = props.onCancel || (() => {})
+    const valid = isFilenameValid(props.content)
+    return <Modal variant="small"
+                  disableFocusTrap
+                  isOpen={props.isOpen || false}
+                  onEscapePress={onCancel}
+                  onClose={onCancel}>
+        <ModalHeader title={props.title || ""} />
+        <ModalBody>
+            <TextInput placeholder={props.placeholder} value={props.content} type="text"
+                       aria-label={props.placeholder} isRequired={true}
+                       validated={valid ? 'success' : 'error'}
+                       onChange={(evt, value) => (props.onChangeContent || (() => {}))(value)}/>
+            <HelperText>
+                {!valid && <HelperTextItem variant="error">
+                    Filename is invalid<br />
+                    <List>
+                        <ListItem>Must not be empty</ListItem>
+                        <ListItem>Must not be . or ..</ListItem>
+                        <ListItem>Must not contain / \ * : &lt; &gt; ? &#34; |</ListItem>
+                        <ListItem>Must not have a space at the beginning or end</ListItem>
+                    </List>
+                </HelperTextItem>}
+            </HelperText>
+        </ModalBody>
+        <ModalFooter style={{justifyContent: 'end'}}>
+            <Button variant="link" isDisabled={!valid} onClick={props.onConfirm || (() => {})}>
+                {props.confirmText || "Confirm"}
+            </Button>
+        </ModalFooter>
+    </Modal>
 }
 
-class FileUploadModal extends React.Component {
+function FileUploadModal(props) {
+    /* hooks */
+    const [uploadFiles, setUploadFiles] = useState([]);
+    const [existsNames, setExistsNames] = useState([]);
+    const [finishFiles, setFinishFiles] = useState([]);
+    const reloadTimer = useRef(null);
+    const reloadInterval = 1000;
+    const forceUpdate = useForceUpdate();
+    useEffect(() => {
+        if (uploadFiles.length === 0) return;
+        fetch(getUrl('/api/file/exists?path=' + props.path), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(uploadFiles.map(it => it.name))
+        })
+            .then(res => res.json())
+            .then(data => {
+                const innerExistsNames = data.filter(it => it.isDirectory !== null);
+                if (innerExistsNames.length > 0) {
+                    setExistsNames(innerExistsNames.map(it => it.name));
+                }
+                else {
+                    uploadFilesFunction(uploadFiles);
+                }
+            })
+            .catch(err => {
+                console.error(err);
+            });
+    }, [uploadFiles]);
 
-    constructor(props) {
-        super(props);
-        this.state = {
-            uploadFiles: [],
-            existsNames: [],
-            processFiles: [],
-            finishFiles: [],
-        }
-        this.reloadTimer = null;
-        this.reloadInterval = 1000;
-    }
-
-    reloadFiles() {
-        clearTimeout(this.reloadTimer);
-        this.reloadTimer = setTimeout(this.props.onUploadReload || (() => {}), this.reloadInterval);
+    /* inner functions */
+    function reloadFiles() {
+        clearTimeout(reloadTimer.current);
+        reloadTimer.current = setTimeout(props.onUploadReload || (() => {}), reloadInterval);
     }
 
     /**
      * @param files {File[]}
      */
-    onFilesUpload(files) {
-        this.setState({uploadFiles: files}, () => {
-            fetch(getUrl('/api/file/exists?path=' + this.props.path), {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(files.map(it => it.name))
-            })
-                .then(res => res.json())
-                .then(data => {
-                    const existsNames = data.filter(it => it.isDirectory !== null);
-                    if (existsNames.length > 0) {
-                        this.setState({existsNames: existsNames.map(it => it.name)});
-                    }
-                    else {
-                        this.setState({processFiles: files}, () => this.uploadFiles());
-                    }
-                })
-                .catch(err => {
-                    console.error(err);
-                });
-        });
+    function onFilesUpload(files) {
+        setUploadFiles(files);
     }
 
-    setProcessingFileStatus(file, state) {
-        const files = this.state.finishFiles;
+    function setProcessingFileStatus(file, state) {
+        const files = finishFiles;
         const index = files.findIndex(it => it.file === file);
         if (index !== -1) {
             files[index].state = state;
@@ -822,125 +818,131 @@ class FileUploadModal extends React.Component {
         else {
             files.push({file: file, state: state, reloaded: false});
         }
-        this.forceUpdate();
+        forceUpdate();
     }
 
-    uploadFile(file) {
-        this.removeFileFromProcessing(file);
+    function uploadFile(file) {
+        removeFileFromProcessing(file);
         const formData = new FormData();
         formData.set('file', file);
         const xhr = new XMLHttpRequest();
         xhr.onloadstart = () => {
-            this.setProcessingFileStatus(file, '0');
+            setProcessingFileStatus(file, '0');
         }
         xhr.onload = () => {
-            this.setProcessingFileStatus(file, 'success');
-            this.reloadFiles();
+            setProcessingFileStatus(file, 'success');
+            reloadFiles();
         }
         xhr.onerror = () => {
-            this.setProcessingFileStatus(file, 'error');
+            setProcessingFileStatus(file, 'error');
         }
         xhr.onprogress = (evt) => {
             if (evt.lengthComputable) {
                 const percentComplete = (evt.loaded / evt.total) * 100;
-                this.setProcessingFileStatus(file, '' + percentComplete);
+                setProcessingFileStatus(file, '' + percentComplete);
             }
         }
-        xhr.open('POST', getUrl('/api/file/upload?path=' + this.props.path), true);
+        xhr.open('POST', getUrl('/api/file/upload?path=' + props.path), true);
         xhr.send(formData);
     }
 
-    uploadFiles() {
-        this.state.processFiles.forEach(it => {
-            this.uploadFile(it);
+    function uploadFilesFunction(f) {
+        f.forEach(it => {
+            uploadFile(it);
         });
     }
 
-    removeFileFromProcessing(file) {
-        const files = this.state.uploadFiles;
+    function removeFileFromProcessing(file) {
+        const files = uploadFiles;
         const index = files.findIndex(it => it === file);
         if (index !== -1) {
             files.splice(index, 1);
-            this.setState({uploadFiles: files});
+            setUploadFiles(files);
         }
     }
 
-    removeFileFromFinish(file) {
-        const files = this.state.finishFiles;
+    function removeFileFromFinish(file) {
+        const files = finishFiles;
         const index = files.findIndex(it => it === file);
         if (index !== -1) {
             files.splice(index, 1);
-            this.setState({finishFiles: files});
+            setFinishFiles(files);
         }
     }
 
-    onClose() {
-        this.setState({uploadFiles: [], processFiles: [], finishFiles: []});
-        this.props.onClose();
+    function onClose() {
+        setUploadFiles([]);
+        setFinishFiles([]);
+        props.onClose();
     }
 
-    render() {
-        const finishFiles = this.state.finishFiles;
-        const successFiles = finishFiles.filter(it => it.state === 'success');
-        const errorFiles = finishFiles.filter(it => it.state === 'error');
-        const finishCount = successFiles.length + errorFiles.length;
-        const hasErrorFiles = errorFiles.length > 0;
-        return <Modal variant="medium"
-                      disableFocusTrap
-                      isOpen={this.props.isOpen}
-                      onEscapePress={this.onClose.bind(this)}
-                      onClose={this.onClose.bind(this)}>
-            <ModalHeader title={"Upload Files"} />
+    /* render */
+    const successFiles = finishFiles.filter(it => it.state === 'success');
+    const errorFiles = finishFiles.filter(it => it.state === 'error');
+    const finishCount = successFiles.length + errorFiles.length;
+    const hasErrorFiles = errorFiles.length > 0;
+    return <Modal variant="medium"
+                  disableFocusTrap
+                  isOpen={props.isOpen}
+                  onEscapePress={onClose.bind(this)}
+                  onClose={onClose.bind(this)}>
+        <ModalHeader title={"Upload Files"} />
+        <ModalBody>
+            <MultipleFileUpload
+                onFileDrop={(evt, files) => onFilesUpload(files)}>
+                <MultipleFileUploadMain
+                    titleIcon={<FontAwesomeIcon icon="fas fa-upload" size="2x" />}
+                    titleText="Drag and drop files here"
+                    titleTextSeparator="or"
+                />
+                {finishFiles.length > 0 && (
+                    <MultipleFileUploadStatus
+                        statusToggleText={`${finishCount} of ${finishFiles.length} files uploaded`}
+                        statusToggleIcon={finishCount < finishFiles.length ? 'inProgress' : hasErrorFiles ? 'danger' : 'success'}>
+                        {finishFiles.map(file => <MultipleFileUploadStatusItem
+                            key={file.file.name}
+                            file={file.file} onClearClick={removeFileFromFinish.bind(this, file)}
+                            progressValue={file.state === 'success' ? 100 : isNaN(file.state) ? 0 : +file.state}
+                            progressVariant={file.state === 'error' ? 'danger' : 'success'}>
+                        </MultipleFileUploadStatusItem>)}
+                    </MultipleFileUploadStatus>
+                )}
+            </MultipleFileUpload>
+        </ModalBody>
+        <Modal variant="medium"
+               disableFocusTrap
+               isOpen={existsNames.length > 0}
+               onEscapePress={() => setExistsNames([])}
+               onClose={() => setExistsNames([])}>
+            <ModalHeader titleIconVariant="warning" title="Files Exists" />
             <ModalBody>
-                <MultipleFileUpload
-                    onFileDrop={(evt, files) => this.onFilesUpload(files)}>
-                    <MultipleFileUploadMain
-                        titleIcon={<FontAwesomeIcon icon="fas fa-upload" size="2x" />}
-                        titleText="Drag and drop files here"
-                        titleTextSeparator="or"
-                    />
-                    {this.state.finishFiles.length > 0 && (
-                        <MultipleFileUploadStatus
-                            statusToggleText={`${finishCount} of ${finishFiles.length} files uploaded`}
-                            statusToggleIcon={finishCount < finishFiles.length ? 'inProgress' : hasErrorFiles ? 'danger' : 'success'}>
-                            {this.state.finishFiles.map(file => <MultipleFileUploadStatusItem
-                                key={file.file.name}
-                                file={file.file} onClearClick={this.removeFileFromFinish.bind(this, file)}
-                                progressValue={file.state === 'success' ? 100 : isNaN(file.state) ? 0 : +file.state}
-                                progressVariant={file.state === 'error' ? 'danger' : 'success'}>
-                            </MultipleFileUploadStatusItem>)}
-                        </MultipleFileUploadStatus>
-                    )}
-                </MultipleFileUpload>
+                Following files already exists:
+                <List>
+                    {existsNames.map(it => {
+                        return <ListItem key={it}>
+                            {it}
+                        </ListItem>
+                    })}
+                </List>
             </ModalBody>
-            <Modal variant="medium"
-                   disableFocusTrap
-                   isOpen={this.state.existsNames.length > 0}
-                   onEscapePress={() => this.setState({existsNames: []})}
-                   onClose={() => this.setState({existsNames: []})}>
-                <ModalHeader titleIconVariant="warning" title="Files Exists" />
-                <ModalBody>
-                    Following files already exists:
-                    <List>
-                        {this.state.existsNames.map(it => {
-                            return <ListItem key={it}>
-                                {it}
-                            </ListItem>
-                        })}
-                    </List>
-                </ModalBody>
-                <ModalFooter style={{justifyContent: 'end'}}>
-                    <Button variant="link" onClick={() => this.setState({existsNames: [], uploadFiles: []})}>Cancel</Button>
-                    <Button variant="link"
-                            onClick={() => this.setState({existsNames: [],
-                                processFiles: this.state.uploadFiles.filter(it => !this.state.existsNames.includes(it.name))},
-                                () => this.uploadFiles())}>Upload Not Exists</Button>
-                    <Button variant="link" isDanger
-                            onClick={() => this.setState({existsNames: [], processFiles: [...this.state.uploadFiles]}, () => this.uploadFiles())}>Override</Button>
-                </ModalFooter>
-            </Modal>
+            <ModalFooter style={{justifyContent: 'end'}}>
+                <Button variant="link" onClick={() => {
+                    setExistsNames([]);
+                    setUploadFiles([]);
+                }}>Cancel</Button>
+                <Button variant="link"
+                        onClick={() => {
+                            setExistsNames([]);
+                            uploadFilesFunction(uploadFiles.filter(it => !existsNames.includes(it.name)));
+                            }}>Upload Not Exists</Button>
+                <Button variant="link" isDanger
+                        onClick={() => {
+                            setExistsNames([]);
+                            uploadFilesFunction(uploadFiles);
+                        }}>Override</Button>
+            </ModalFooter>
         </Modal>
-    }
+    </Modal>
 
 }
 
