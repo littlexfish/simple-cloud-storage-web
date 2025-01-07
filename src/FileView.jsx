@@ -313,7 +313,6 @@ function FileTree(props) {
 function DirectoryView(props) {
     /* hooks */
     const [openedFile, setOpenedFile] = useState(null);
-    // const [files, setFiles] = useState([]);
     const files = useRef([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isError, setIsError] = useState(false);
@@ -332,8 +331,6 @@ function DirectoryView(props) {
         confirmText: '',
         onConfirm: () => {},
     });
-    const [renameModalOpen, setRenameModalOpen] = useState(false);
-    const [renameModalContent, setRenameModalContent] = useState('');
     const forceUpdate = useForceUpdate();
     useComponentDidMount(() => {
         getFiles();
@@ -346,7 +343,6 @@ function DirectoryView(props) {
     });
 
     /* inner functions */
-
     function getFiles() {
         fetch(getUrl('/api/directory?path=' + (props.selectedDirectory || '')))
             .then(response => response.json())
@@ -357,6 +353,18 @@ function DirectoryView(props) {
             })
             .then(data => {
                 files.current = apiDataToFiles(data);
+                if (data.path !== '') {
+                    const pathSplit = data.path.split('/');
+                    pathSplit.pop();
+                    files.current.unshift({
+                        name: <Tooltip content='Back to Parent Directory' position='right'><FontAwesomeIcon icon="fa-solid fa-left-long" /></Tooltip>,
+                        isDirectory: true,
+                        isHidden: false,
+                        size: 0,
+                        path: pathSplit.join('/'),
+                        isSelected: false,
+                    })
+                }
                 setIsLoading(false);
                 setIsError(false);
             });
@@ -481,7 +489,7 @@ function DirectoryView(props) {
     }
 
     function getSelectedFiles() {
-        return files.current.filter(it => it.isSelected);
+        return files.current.filter(it => it.isSelected && (!it.isHidden || props.showHidden));
     }
 
     function setContextOpen(isOpen) {
